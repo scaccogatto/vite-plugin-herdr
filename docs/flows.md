@@ -11,9 +11,9 @@
 
 ## Send flow
 
-7. User types a prompt (max 4000 characters client-side), optionally changes the selected agent with `Up`/`Down`, and presses `Enter` (`Shift+Enter` inserts a newline instead). Only one send is in flight at a time.
+7. User types a prompt (max 20000 characters), optionally changes the selected agent with `Up`/`Down`, and presses `Enter` (`Shift+Enter` inserts a newline instead). Only one send is in flight at a time.
 8. Client-side prompt composition is skipped when herdr is reachable, composition happens server-side instead so relative source hints can be resolved against `server.config.root`; the client sends `{ target, prompt, element }` as JSON to `POST {endpoint}/prompt`.
-9. The dev server validates same-origin, then body size and shape (`invalid_params` on failure), resolves a relative `hint` to an absolute path, and composes the final prompt with `composePrompt`. Snippet/style payloads over `inlineMaxChars` are written to a file first and referenced with a `Details: <path>` line.
+9. The dev server validates same-origin (rejects 403), then JSON content-type, body size (256 KB cap, rejects 413), and shape via `validatePrompt` (rejects 400). Server resolves a relative `hint` to an absolute path via `absolutizeHint`, and composes the final prompt with `composePrompt`. Snippet/style payloads over `inlineMaxChars` (default 1500) are written to a markdown file first and referenced with a `Details: <path>` line.
 10. The server opens one connection to herdr's Unix socket, sends `agent.prompt {target, text}`, and closes it.
 11. herdr delivers the text to the chosen pane as bracketed paste plus `Enter`; a working agent (e.g. Claude Code) queues it as its next turn.
 12. The server relays herdr's result back as `{ ok, target, title }`; the client shows a toast and closes the popup. HMR shows the agent's fix in the page once it lands.

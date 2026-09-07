@@ -6,21 +6,29 @@ tags: [security, same-origin, csrf, data-handling]
 generated:
   by: claude/fable-5
   at: 2026-09-07
-status: draft
+status: stable
 sources:
   - resource: ../README.md
   - resource: ../docs/stack.md
 ---
 
-## Principles
+## Implemented Guards
 
-1. **Same-origin only, no token**: The browser client can only send to the dev server it's served from. Fetch requests carry browser origin guards (`Sec-Fetch-Site`, `Origin` header); server checks `Sec-Fetch-Site: same-origin` or `Origin` host matches `Host`, else rejects 403. Deliberately no auth token on top: a request that already passed the same-origin check is one the served page itself made, a token would only re-authenticate a request that's already trusted, adding a secret to manage with no additional safety. This mirrors why a plain localhost server (as MCP Pointer/PinPoint use) is the wrong transport in the first place: any page, not just this one, can reach an open localhost port, so same-origin-via-dev-server is the actual boundary, not a port number.
+**Same-origin check** (`src/http.ts`, `src/server.ts`): `isSameOrigin(headers)` returns true if `Sec-Fetch-Site: same-origin` or `Origin` header host matches `Host`; server rejects 403 otherwise. No fallback for Safari without `Sec-Fetch-Site` (older versions treated as same-origin violations). Deliberately no auth token: a same-origin request is one the served page made, and a token adds secret management overhead with no additional safety (dev server is trusted by definition of serving the page).
 
-2. **Page content as data**: HTML snippet, styles, prompt text are from the rendered page. None are executed server-side. Parser treats markup as strings; styles as strings.
+**Request body guards** (`src/http.ts`):
+- Content-Type must be `application/json`, reject 415 otherwise.
+- Body size cap: 256 KB (262144 bytes), reject 413 without destroying the socket (async iterator's `return()` handles TCP RST internally; explicit `destroy()` would leave unread bytes and trigger the OS to send RST).
+- JSON parse validation, reject 400 on invalid JSON.
 
-3. **Socket path from env**: Herdr socket location comes from `HERDR_SOCKET_PATH` environment variable set by herdr when running inside it. Dev server is typically inside a herdr pane and inherits the var. Outside herdr: defaults to user's home, fallback clipboard.
+**Prompt validation** (`src/http.ts`):
+- `validatePrompt(body)` enforces type shape: `target` (non-empty string), `prompt` (max 20000 chars), `element` (object with url, path, html, hint, viewport, rect, styles).
+- Returns null (never throws) on mismatch; server responds 400 `invalid_params`.
 
-4. **Attachment storage**: Temporary files for oversized snippets go to `os.tmpdir()/vite-plugin-herdr/`. Cleanup: attachments older than 24 hours deleted on startup. No secrets in attachments (user prompts are in the request body).
+**Attachment storage** (`src/server.ts`):
+- Oversized snippets go to `os.tmpdir()/vite-plugin-herdr/`.
+- `cleanupAttachments(dir, maxAgeMs)` deletes `.md` files older than 24 hours (86400000 ms), ignores missing directory and per-file errors, runs on startup.
+- No secrets in attachments (user prompts sent in request body, not files).
 
 ## Edge Cases
 
