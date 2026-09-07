@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { test, expect, type Page } from '@playwright/test'
-import { startDemo, type DemoServer } from './helpers/servers.ts'
+import { startDemo, waitForPreselectedAgent, type DemoServer } from './helpers/servers.ts'
 import { liveSnapshot } from './helpers/fixtures.ts'
 
 // Never the real macOS `screencapture`: this fake just drops a fixed 1x1 PNG
@@ -74,6 +74,7 @@ test.describe('screenshot option on', () => {
 
     await checkbox.check()
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+    await waitForPreselectedAgent(page)
     await page.keyboard.press('Enter')
 
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
