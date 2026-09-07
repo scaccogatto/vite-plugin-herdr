@@ -13,16 +13,37 @@ export interface Options {
     maxLines?: number
     inlineMaxChars?: number
   }
+  /**
+   * Appends the client import to matching modules instead of relying on
+   * transformIndexHtml, for meta-frameworks whose app type isn't spa/mpa.
+   * A string matches ids ending with it; a RegExp is tested against the id
+   * (query stripped). For Nuxt use `appendTo: /\/entry\.m?js$/` (Nuxt's
+   * client entry); for SvelteKit use
+   * `appendTo: /vite\/dist\/client\/client\.mjs(?:\?|$)/`; for Astro use
+   * the integration's `injectScript` instead of this option.
+   */
+  appendTo?: string | RegExp
 }
 
 /** Resolved options with all defaults applied */
-export type ResolvedOptions = Required<Omit<Options, 'socketPath' | 'snippet'>> & {
+export type ResolvedOptions = Required<Omit<Options, 'socketPath' | 'snippet' | 'appendTo'>> & {
   socketPath: string | undefined
   snippet: { maxDepth: number; maxLines: number; inlineMaxChars: number }
+  appendTo: string | RegExp | undefined
 }
 
 /** Virtual module ID for the client entry */
 export const VIRTUAL_ID = 'virtual:vite-plugin-herdr/client'
+
+/** Builds the query string carrying client options, injected alongside the virtual module id */
+function clientQuery(resolved: ResolvedOptions): string {
+  return new URLSearchParams({
+    hotkey: resolved.hotkey,
+    endpoint: resolved.endpoint,
+    maxDepth: String(resolved.snippet.maxDepth),
+    maxLines: String(resolved.snippet.maxLines),
+  }).toString()
+}
 
 /** Resolve options with documented defaults */
 export function resolveOptions(options: Options): ResolvedOptions {
@@ -31,6 +52,7 @@ export function resolveOptions(options: Options): ResolvedOptions {
     endpoint: '/__herdr',
     enabled: true,
     socketPath: undefined,
+    appendTo: undefined,
     snippet: {
       maxDepth: 3,
       maxLines: 60,
@@ -69,6 +91,8 @@ export default function herdr(options: Options = {}): Plugin {
     new URL(import.meta.url.endsWith('.ts') ? './client/index.ts' : './client.js', import.meta.url),
   )
 
+  const appendTo = resolved.appendTo
+
   return {
     name: 'vite-plugin-herdr',
     apply: 'serve',
@@ -96,12 +120,11 @@ export default function herdr(options: Options = {}): Plugin {
     transformIndexHtml: {
       order: 'pre',
       handler() {
-        const params = new URLSearchParams({
-          hotkey: resolved.hotkey,
-          endpoint: resolved.endpoint,
-          maxDepth: String(resolved.snippet.maxDepth),
-          maxLines: String(resolved.snippet.maxLines),
-        }).toString()
+        // Vite only calls this hook for spa/mpa app types; appendTo covers
+        // meta-frameworks (Nuxt, SvelteKit) whose html isn't transformed here.
+        if (appendTo) return undefined
+
+        const params = clientQuery(resolved)
 
         return [
           {
@@ -115,6 +138,19 @@ export default function herdr(options: Options = {}): Plugin {
         ]
       },
     },
+
+    ...(appendTo
+      ? {
+          transform(code: string, id: string) {
+            const bareId = id.split('?')[0] ?? id
+            const matches = typeof appendTo === 'string' ? bareId.endsWith(appendTo) : appendTo.test(bareId)
+            if (!matches) return undefined
+
+            const params = clientQuery(resolved)
+            return { code: `${code}\nimport '${VIRTUAL_ID}?${params}'\n`, map: null }
+          },
+        }
+      : {}),
   }
 }
 
