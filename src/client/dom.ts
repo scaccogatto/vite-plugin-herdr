@@ -1,11 +1,11 @@
 import type { ElementInfo } from '../types.ts'
 
-/// Attribute added (in serialized output only) to mark the picked node
+/** Attribute added (in serialized output only) to mark the picked node */
 export const PICKED_ATTR = 'data-herdr-picked'
-/// Attribute carried by the picker's own overlay host, used to exclude it from hit-testing and snippets
+/** Attribute carried by the picker's own overlay host, used to exclude it from hit-testing and snippets */
 export const HOST_ATTR = 'data-herdr-host'
 
-/// Parsed hotkey spec: which modifiers must be held plus the triggering key
+/** Parsed hotkey spec: which modifiers must be held plus the triggering key */
 export interface Hotkey {
   ctrl: boolean
   shift: boolean
@@ -25,7 +25,7 @@ const MODIFIER_TOKENS: Record<string, keyof Omit<Hotkey, 'key'>> = {
   command: 'meta',
 }
 
-/// Parse a hotkey spec like `ctrl+b` or `Cmd+Shift+K` into a Hotkey
+/** Parse a hotkey spec like `ctrl+b` or `Cmd+Shift+K` into a Hotkey */
 export function parseHotkey(spec: string): Hotkey {
   const hotkey: Hotkey = { ctrl: false, shift: false, alt: false, meta: false, key: '' }
   let key: string | null = null
@@ -49,7 +49,7 @@ export function parseHotkey(spec: string): Hotkey {
   return hotkey
 }
 
-/// Check whether a keyboard event matches a parsed hotkey
+/** Check whether a keyboard event matches a parsed hotkey */
 export function matchesHotkey(e: KeyboardEvent, hk: Hotkey): boolean {
   return (
     e.ctrlKey === hk.ctrl &&
@@ -62,7 +62,7 @@ export function matchesHotkey(e: KeyboardEvent, hk: Hotkey): boolean {
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
-/// Hit-test through shadow DOM boundaries, excluding the picker's own overlay host
+/** Hit-test through shadow DOM boundaries, excluding the picker's own overlay host */
 export function deepElementFromPoint(x: number, y: number, host: Element | null): Element | null {
   let el = document.elementFromPoint(x, y)
   if (el === null) return null
@@ -127,7 +127,7 @@ function ownKeyStartingWith(node: Element, prefix: string): string | undefined {
   return Object.keys(node).find((k) => k.startsWith(prefix))
 }
 
-/// Best-effort source hint for an element: framework dev attributes, then Vue/React runtime introspection
+/** Best-effort source hint for an element: framework dev attributes, then Vue/React runtime introspection */
 export function sourceHint(el: Element): string | null {
   for (let node: Element | null = el; node !== null && node !== document.body; node = node.parentElement) {
     for (const attr of SOURCE_ATTRS) {
@@ -157,7 +157,7 @@ export function sourceHint(el: Element): string | null {
 const ID_RE = /^[A-Za-z_][\w-]*$/
 const CLASS_RE = /^[a-z_-][\w-]*$/i
 
-/// Build a short CSS-like selector path for an element, climbing at most 6 segments
+/** Build a short CSS-like selector path for an element, climbing at most 6 segments */
 export function selectorPath(el: Element): string {
   const segments: string[] = []
   const separators: (' > ' | ' >>> ')[] = []
@@ -376,7 +376,7 @@ function applyLineCap(lines: string[], pickedLine: number, maxLines: number): st
   return result
 }
 
-/// Serialize a trimmed, indented HTML snippet around the picked element
+/** Serialize a trimmed, indented HTML snippet around the picked element */
 export function trimHtml(picked: Element, opts: { maxDepth: number; maxLines: number }): string {
   const root = trimHtmlRoot(picked)
   const pathSet = buildPathSet(root, picked)
@@ -404,7 +404,7 @@ const STYLE_PROPS = [
   'z-index',
 ]
 
-/// Summarize the computed styles that matter most for layout and appearance
+/** Summarize the computed styles that matter most for layout and appearance */
 export function styleSummary(el: Element): Record<string, string> {
   const computed = getComputedStyle(el)
   const result: Record<string, string> = {}
@@ -415,7 +415,7 @@ export function styleSummary(el: Element): Record<string, string> {
   return result
 }
 
-/// Capture everything herdr needs to know about a picked element
+/** Capture everything herdr needs to know about a picked element */
 export function describeElement(el: Element, opts: { maxDepth: number; maxLines: number }): ElementInfo {
   const rect = el.getBoundingClientRect()
   return {

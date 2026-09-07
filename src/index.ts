@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
 import { mountRoutes } from './server.ts'
 
-/// Options for the vite-plugin-herdr plugin
+/** Options for the vite-plugin-herdr plugin */
 export interface Options {
   hotkey?: string
   socketPath?: string
@@ -15,16 +15,16 @@ export interface Options {
   }
 }
 
-/// Resolved options with all defaults applied
+/** Resolved options with all defaults applied */
 export type ResolvedOptions = Required<Omit<Options, 'socketPath' | 'snippet'>> & {
   socketPath: string | undefined
   snippet: { maxDepth: number; maxLines: number; inlineMaxChars: number }
 }
 
-/// Virtual module ID for the client entry
+/** Virtual module ID for the client entry */
 export const VIRTUAL_ID = 'virtual:vite-plugin-herdr/client'
 
-/// Resolve options with documented defaults
+/** Resolve options with documented defaults */
 export function resolveOptions(options: Options): ResolvedOptions {
   const defaults: ResolvedOptions = {
     hotkey: 'ctrl+b',
@@ -48,8 +48,10 @@ export function resolveOptions(options: Options): ResolvedOptions {
   }
 }
 
-/// Default plugin factory: creates a Vite dev-server plugin that injects a DOM
-/// picker and connects to herdr agents
+/**
+ * Default plugin factory: creates a Vite dev-server plugin that injects a DOM
+ * picker and connects to herdr agents
+ */
 export default function herdr(options: Options = {}): Plugin {
   const resolved = resolveOptions(options)
 
