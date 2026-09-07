@@ -71,7 +71,7 @@ export function rewriteHint(hint: string | null, fromRoot: string, toRoot: strin
   const prefix = fromRoot.endsWith('/') ? fromRoot : `${fromRoot}/`
   const relative = hint.startsWith(prefix) ? hint.slice(prefix.length) : hint
 
-  return absolutizeHint(relative, toRoot)
+  return absolutizeHint(relative, [toRoot])
 }
 
 type Kind = 'edit' | 'visual'
