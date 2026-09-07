@@ -98,47 +98,64 @@ function truncate(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 3)}...` : value
 }
 
+function rowId(paneId: string): string {
+  return `herdr-agent-${paneId.replace(/[^A-Za-z0-9_-]/g, '-')}`
+}
+
 const STYLE = `
-:host { all: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; }
+:host { all: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; line-height: 1.4; --h-bg: #1e1e2e; --h-bg-deep: #181825; --h-line: #45475a; --h-text: #cdd6f4; --h-muted: #a6adc8; --h-faint: #9399b2; --h-dim: #6c7086; --h-accent: #cba6f7; --h-accent-veil: rgba(203, 166, 247, 0.12); --h-accent-fill: rgba(203, 166, 247, 0.18); --h-wait: #f9e2af; --h-wait-veil: rgba(249, 226, 175, 0.12); --h-ok: #a6e3a1; --h-ok-veil: rgba(166, 227, 161, 0.12); --h-info: #89b4fa; --h-error: #f38ba8; }
 * { box-sizing: border-box; }
-.outline { position: fixed; display: none; border: 2px solid #cba6f7; background: rgba(203, 166, 247, 0.12); pointer-events: none; }
-.chip { position: fixed; display: none; background: #1e1e2e; color: #cba6f7; border: 1px solid #45475a; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
-.multi { position: fixed; display: none; border: 2px solid #cba6f7; pointer-events: none; }
-.multi-badge { position: absolute; top: -8px; left: -8px; width: 16px; height: 16px; border-radius: 50%; background: #cba6f7; color: #1e1e2e; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-.inflight { position: fixed; display: none; border: 2px dashed #f9e2af; background: rgba(249, 226, 175, 0.12); pointer-events: none; transition: border-color 0.2s, background-color 0.2s; }
-.inflight-chip { position: fixed; display: none; background: #1e1e2e; color: #f9e2af; border: 1px solid #45475a; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-.inflight.done { border-style: solid; background: rgba(166, 227, 161, 0.12); }
-.inflight-chip.done { color: #a6e3a1; border-color: #a6e3a1; font-weight: 700; }
-.popup { position: fixed; display: none; flex-direction: column; width: 380px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: auto; }
-.popup-header { padding: 10px 12px 6px; border-bottom: 1px solid #45475a; }
-.popup-count { display: none; color: #a6adc8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+button, textarea, input { font: inherit; }
+:focus-visible { outline: 2px solid var(--h-accent); outline-offset: 1px; }
+::selection { background: var(--h-accent); color: var(--h-bg); }
+.outline { position: fixed; display: none; border: 2px solid var(--h-accent); background: var(--h-accent-veil); pointer-events: none; }
+.chip { position: fixed; display: none; background: var(--h-bg); color: var(--h-accent); border: 1px solid var(--h-line); border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
+.multi { position: fixed; display: none; border: 2px solid var(--h-accent); pointer-events: none; }
+.multi-badge { position: absolute; top: -8px; left: -8px; width: 16px; height: 16px; border-radius: 50%; background: var(--h-accent); color: var(--h-bg); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.inflight { position: fixed; display: none; border: 2px dashed var(--h-wait); background: var(--h-wait-veil); pointer-events: none; transition: border-color 0.2s, background-color 0.2s; }
+.inflight-chip { position: fixed; display: none; background: var(--h-bg); color: var(--h-wait); border: 1px solid var(--h-line); border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.inflight.done { border-style: solid; background: var(--h-ok-veil); }
+.inflight-chip.done { color: var(--h-ok); border-color: var(--h-ok); font-weight: 700; }
+.popup { position: fixed; display: none; flex-direction: column; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); background: var(--h-bg); color: var(--h-text); border: 1px solid var(--h-line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: auto; }
+.popup-header { padding: 10px 12px 6px; border-bottom: 1px solid var(--h-line); }
+.popup-count { display: none; color: var(--h-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
 .popup-label { font-weight: 600; }
-.popup-hint { color: #a6adc8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.popup-editor-btn { margin-top: 4px; background: none; border: 1px solid #45475a; color: #cba6f7; border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
-.popup textarea { display: block; width: calc(100% - 24px); margin: 8px 12px; padding: 6px 8px; background: #181825; color: #cdd6f4; border: 1px solid #45475a; border-radius: 6px; font: inherit; resize: vertical; }
-.popup textarea.invalid { border-color: #f38ba8; }
-.shot-row { display: none; align-items: center; gap: 6px; margin: 0 12px 8px; font-size: 12px; color: #cdd6f4; cursor: pointer; }
+.popup-hint { color: var(--h-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.popup-editor-btn { margin-top: 4px; background: none; border: 1px solid var(--h-line); color: var(--h-accent); border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
+.popup-editor-btn:hover, .spawn-btn:not(:disabled):hover { border-color: var(--h-accent); background: var(--h-accent-veil); }
+.popup textarea { display: block; width: calc(100% - 24px); margin: 8px 12px; padding: 6px 8px; background: var(--h-bg-deep); color: var(--h-text); border: 1px solid var(--h-line); border-radius: 6px; caret-color: var(--h-accent); resize: vertical; }
+.popup textarea::placeholder { color: var(--h-faint); }
+.popup textarea:focus-visible { outline: none; border-color: var(--h-accent); box-shadow: 0 0 0 2px var(--h-accent-veil); }
+.popup textarea.invalid { border-color: var(--h-error); }
+.shot-row { display: none; align-items: center; gap: 6px; margin: 0 12px 8px; font-size: 12px; color: var(--h-text); cursor: pointer; }
+.shot-row input { margin: 0; accent-color: var(--h-accent); }
 .spawn-area { display: flex; gap: 6px; margin: 0 12px 8px; }
-.spawn-btn { flex: 1; background: none; border: 1px solid #45475a; color: #cba6f7; border-radius: 4px; padding: 4px 6px; font-size: 11px; cursor: pointer; }
+.spawn-btn { flex: 1; background: none; border: 1px solid var(--h-line); color: var(--h-accent); border-radius: 4px; padding: 4px 6px; font-size: 11px; cursor: pointer; }
 .spawn-btn:disabled { opacity: 0.5; cursor: default; }
-.agents-area { max-height: 220px; overflow-y: auto; margin: 0 12px; border-top: 1px solid #45475a; }
-.agents-notice { padding: 8px 0; color: #a6adc8; font-size: 12px; }
-.agents-group-heading { padding: 6px 0 2px; color: #a6adc8; font-size: 11px; text-transform: uppercase; }
+.agents-area { flex: 1 1 auto; min-height: 0; max-height: 220px; overflow-y: auto; margin: 0 12px; border-top: 1px solid var(--h-line); }
+.agents-notice { padding: 8px 0; color: var(--h-muted); font-size: 12px; }
+.agents-group-heading { padding: 6px 0 2px; color: var(--h-muted); font-size: 11px; text-transform: uppercase; }
 .agent-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
-.agent-row[aria-selected='true'] { background: rgba(203, 166, 247, 0.18); }
+.agent-row:not([aria-disabled='true']):hover { background: var(--h-accent-veil); }
+.agent-row[aria-selected='true'] { background: var(--h-accent-fill); }
 .agent-row[aria-disabled='true'] { opacity: 0.5; cursor: default; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.status-idle { background: #a6e3a1; }
-.status-done { background: #89b4fa; }
-.status-working { background: #f9e2af; }
-.status-blocked { background: #f38ba8; }
-.status-unknown { background: #6c7086; }
+.status-idle { background: var(--h-ok); }
+.status-done { background: var(--h-info); }
+.status-working { background: var(--h-wait); }
+.status-blocked { background: var(--h-error); }
+.status-unknown { background: var(--h-dim); }
 .agent-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-branch { color: #a6adc8; font-size: 11px; }
-.agent-pane { color: #6c7086; font-size: 10px; }
-.popup-footer { padding: 6px 12px; color: #a6adc8; font-size: 11px; border-top: 1px solid #45475a; }
-.toast { position: fixed; display: none; right: 16px; bottom: 16px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 6px; padding: 8px 12px; font-size: 12px; pointer-events: none; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); max-width: 320px; }
-.toast.error { border-color: #f38ba8; }
+.agent-branch { color: var(--h-muted); font-size: 11px; }
+.agent-pane { color: var(--h-faint); font-size: 11px; }
+.popup-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 6px 12px; color: var(--h-muted); font-size: 11px; border-top: 1px solid var(--h-line); }
+.send-btn { background: var(--h-accent); color: var(--h-bg); border: 1px solid var(--h-accent); border-radius: 4px; padding: 3px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.send-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.send-btn:disabled { opacity: 0.6; cursor: default; }
+.popup.sending textarea, .popup.sending .shot-row, .popup.sending .spawn-area, .popup.sending .agents-area { opacity: 0.6; pointer-events: none; }
+.toast { position: fixed; display: none; right: 16px; bottom: 16px; background: var(--h-bg); color: var(--h-text); border: 1px solid var(--h-line); border-radius: 6px; padding: 8px 12px; font-size: 12px; pointer-events: none; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4); max-width: min(320px, calc(100vw - 32px)); }
+.toast.error { border-color: var(--h-error); }
+@media (prefers-reduced-motion: reduce) { .inflight { transition: none; } }
 `
 
 function boot(): void {
@@ -205,6 +222,8 @@ function boot(): void {
     textarea.placeholder = 'What should change?'
     textarea.rows = 3
     textarea.maxLength = 4000
+    textarea.setAttribute('aria-label', 'Prompt for the agent')
+    textarea.setAttribute('aria-controls', 'herdr-agents')
 
     const shotRow = document.createElement('label')
     shotRow.className = 'shot-row'
@@ -215,7 +234,7 @@ function boot(): void {
     shotCheckbox.addEventListener('change', () => writeShotPref(shotCheckbox.checked))
 
     const shotLabel = document.createElement('span')
-    shotLabel.textContent = '📷 attach screenshot'
+    shotLabel.textContent = 'Attach screenshot'
 
     shotRow.append(shotCheckbox, shotLabel)
 
@@ -238,10 +257,17 @@ function boot(): void {
     const agentsArea = document.createElement('div')
     agentsArea.className = 'agents-area'
     agentsArea.setAttribute('role', 'listbox')
+    agentsArea.id = 'herdr-agents'
 
     const footer = document.createElement('div')
     footer.className = 'popup-footer'
-    footer.textContent = 'Enter send · Shift+Enter newline · ↑↓ agent · Esc close'
+    const footerHint = document.createElement('span')
+    footerHint.textContent = 'Enter send · Shift+Enter newline · ↑↓ agent · Esc close'
+    const sendBtn = document.createElement('button')
+    sendBtn.type = 'button'
+    sendBtn.className = 'send-btn'
+    sendBtn.textContent = 'Send'
+    footer.append(footerHint, sendBtn)
 
     popup.append(header, textarea, shotRow, spawnArea, agentsArea, footer)
 
@@ -439,7 +465,7 @@ function boot(): void {
     function settleInflightFinished(): void {
       inflightSettled = true
       const label = inflightLabel()
-      inflightBox.style.borderColor = '#a6e3a1'
+      inflightBox.style.borderColor = 'var(--h-ok)'
       inflightBox.classList.add('done')
       inflightChip.textContent = `✓ DONE · ${label}`
       inflightChip.classList.add('done')
@@ -455,7 +481,7 @@ function boot(): void {
     function settleInflightBlocked(): void {
       inflightSettled = true
       const label = inflightLabel()
-      inflightBox.style.borderColor = '#f38ba8'
+      inflightBox.style.borderColor = 'var(--h-error)'
       inflightChip.style.display = 'none'
       stopInflightPoll()
       showToast(`${label} is waiting for you in herdr`)
@@ -578,6 +604,7 @@ function boot(): void {
 
     function close(): void {
       popup.style.display = 'none'
+      resetSending()
       clearOutline()
       hoveredEl = null
       pickedEl = null
@@ -592,14 +619,24 @@ function boot(): void {
 
     // --- toast -----------------------------------------------------
 
+    // The one authored motion: popup and toast settle in from 4px below.
+    // Nothing else moves; outlines track the pointer and must stay instant.
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)')
+    function animateIn(el: HTMLElement): void {
+      if (reduceMotion.matches || typeof el.animate !== 'function') return
+      el.animate([{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], { duration: 140, easing: 'cubic-bezier(0.2, 0, 0, 1)' })
+    }
+
     function showToast(message: string, isError = false): void {
       toast.textContent = message
       toast.classList.toggle('error', isError)
       toast.style.display = 'block'
+      animateIn(toast)
       if (toastTimer !== undefined) clearTimeout(toastTimer)
+      // errors carry a recovery hint, so they get a little longer to be read
       toastTimer = setTimeout(() => {
         toast.style.display = 'none'
-      }, 3000)
+      }, isError ? 4500 : 3000)
     }
 
     function flashInvalid(): void {
@@ -636,6 +673,7 @@ function boot(): void {
       notice.className = 'agents-notice'
       notice.textContent = text
       agentsArea.appendChild(notice)
+      clampPopup()
     }
 
     function showAgentsLoading(): void {
@@ -649,16 +687,24 @@ function boot(): void {
         row.setAttribute('aria-selected', String(isSelected))
         if (isSelected) row.scrollIntoView({ block: 'nearest' })
       }
+      // The textarea keeps focus while Up/Down move the selection, so it
+      // announces the selected option the combobox way
+      if (selectedPaneId === null) textarea.removeAttribute('aria-activedescendant')
+      else textarea.setAttribute('aria-activedescendant', rowId(selectedPaneId))
     }
 
     function renderAgentRow(agent: AgentRow): HTMLElement {
       const row = document.createElement('div')
       row.className = 'agent-row'
       row.setAttribute('role', 'option')
+      row.id = rowId(agent.pane_id)
       row.dataset.paneId = agent.pane_id
 
       const blocked = agent.agent_status === 'blocked'
-      if (blocked) row.setAttribute('aria-disabled', 'true')
+      if (blocked) {
+        row.setAttribute('aria-disabled', 'true')
+        row.title = 'Waiting for you in herdr, answer it there first'
+      }
 
       const dot = document.createElement('span')
       dot.className = `status-dot status-${agent.agent_status}`
@@ -700,6 +746,7 @@ function boot(): void {
         notice.className = 'agents-notice'
         notice.textContent = `herdr not reachable (${state.reason}): Enter copies the prompt`
         agentsArea.appendChild(notice)
+        clampPopup()
         return
       }
 
@@ -708,16 +755,25 @@ function boot(): void {
       selectedPaneId = pickAgent(state, readLast())
 
       for (const group of groups) {
+        const wsLabel = group.workspace.label ?? group.workspace.workspace_id
+        const groupLabel = group.workspace.focused ? `${wsLabel} · focused` : wsLabel
+        // A listbox may only contain options and groups: the visible heading
+        // is decoration, the group carries the workspace name for readers
+        const groupEl = document.createElement('div')
+        groupEl.setAttribute('role', 'group')
+        groupEl.setAttribute('aria-label', groupLabel)
         const heading = document.createElement('div')
         heading.className = 'agents-group-heading'
-        const wsLabel = group.workspace.label ?? group.workspace.workspace_id
-        heading.textContent = group.workspace.focused ? `${wsLabel} · focused` : wsLabel
-        agentsArea.appendChild(heading)
+        heading.setAttribute('aria-hidden', 'true')
+        heading.textContent = groupLabel
+        groupEl.appendChild(heading)
 
-        for (const agent of group.agents) agentsArea.appendChild(renderAgentRow(agent))
+        for (const agent of group.agents) groupEl.appendChild(renderAgentRow(agent))
+        agentsArea.appendChild(groupEl)
       }
 
       updateSelection()
+      clampPopup()
     }
 
     async function loadAgents(token: number): Promise<void> {
@@ -784,6 +840,28 @@ function boot(): void {
 
     // --- popup positioning + open/pick -----------------------------------------------------
 
+    // Tab never leaves the dialog: it cycles through what is visible and enabled
+    function cycleFocus(delta: number): void {
+      const items = [...popup.querySelectorAll<HTMLElement>('button, input, textarea')].filter(
+        (el) => el.getClientRects().length > 0 && !(el as HTMLButtonElement).disabled,
+      )
+      if (items.length === 0) return
+      const active = shadow.activeElement
+      const idx = active instanceof HTMLElement ? items.indexOf(active) : -1
+      const next = idx === -1 ? (delta > 0 ? 0 : items.length - 1) : (idx + delta + items.length) % items.length
+      items[next]?.focus()
+    }
+
+    // The agent list arrives after the popup opened, so the popup grows
+    // afterwards: keep it inside the viewport without flipping it around
+    // the pointer again
+    function clampPopup(): void {
+      if (popup.style.display === 'none') return
+      const r = popup.getBoundingClientRect()
+      popup.style.left = `${Math.max(8, Math.min(r.left, innerWidth - r.width - 8))}px`
+      popup.style.top = `${Math.max(8, Math.min(r.top, innerHeight - r.height - 8))}px`
+    }
+
     function positionPopup(x: number, y: number): void {
       const r = popup.getBoundingClientRect()
       let left = x + 12
@@ -807,6 +885,7 @@ function boot(): void {
 
       labelEl.textContent = elementLabel(pickedEl)
       hintEl.textContent = pickedInfo.hint ?? ''
+      hintEl.title = pickedInfo.hint ?? ''
       hintEl.style.display = pickedInfo.hint !== null ? '' : 'none'
 
       const match = pickedInfo.hint !== null ? pickedInfo.hint.match(EDITOR_HINT_RE) : null
@@ -822,6 +901,7 @@ function boot(): void {
 
       popup.style.display = 'flex'
       positionPopup(x, y)
+      animateIn(popup)
       textarea.focus()
 
       pickToken += 1
@@ -896,6 +976,9 @@ function boot(): void {
 
       const target = selectedPaneId
       mode = 'sending'
+      popup.classList.add('sending')
+      sendBtn.disabled = true
+      sendBtn.textContent = 'Sending…'
 
       // Attaching a screenshot means the dev server captures real pixels of
       // this window during the request below, so the popup must be out of
@@ -966,15 +1049,13 @@ function boot(): void {
 
         if (res.status === 409) {
           showToast('Agent is waiting at a dialog in herdr, answer it first', true)
-          mode = 'popup'
-          popup.style.display = 'flex'
+          reopenAfterError()
           return
         }
 
         if (res.status === 404) {
           showToast('Agent is gone', true)
-          mode = 'popup'
-          popup.style.display = 'flex'
+          reopenAfterError()
           pickToken += 1
           void loadAgents(pickToken)
           return
@@ -983,8 +1064,7 @@ function boot(): void {
         if (res.status === 400 || res.status === 413 || res.status === 415) {
           const err = (await res.json()) as ErrorResponse
           showToast(err.message, true)
-          mode = 'popup'
-          popup.style.display = 'flex'
+          reopenAfterError()
           return
         }
 
@@ -1000,11 +1080,32 @@ function boot(): void {
       }
     }
 
+    // The popup may have been hidden for a screenshot capture, which also
+    // dropped focus: bring both back so the next Enter or keystroke lands
+    function resetSending(): void {
+      popup.classList.remove('sending')
+      sendBtn.disabled = false
+      sendBtn.textContent = 'Send'
+    }
+
+    function reopenAfterError(): void {
+      mode = 'popup'
+      resetSending()
+      popup.style.display = 'flex'
+      textarea.focus()
+    }
+
+    sendBtn.addEventListener('click', () => {
+      if (mode === 'popup') void send()
+    })
+
     // --- open-in-editor -----------------------------------------------------
 
     editorBtn.addEventListener('click', () => {
       if (editorMatch === null) return
-      void fetch(`${base}__open-in-editor?file=${encodeURIComponent(editorMatch)}`)
+      fetch(`${base}__open-in-editor?file=${encodeURIComponent(editorMatch)}`)
+        .then((res) => showToast(res.ok ? 'Opened in editor' : 'Could not open the editor', !res.ok))
+        .catch(() => showToast('Could not open the editor', true))
     })
 
     // --- window listeners (capture phase) -----------------------------------
@@ -1037,9 +1138,17 @@ function boot(): void {
           close()
           return
         }
-        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        if (e.key === 'Tab') {
           e.preventDefault()
           e.stopPropagation()
+          cycleFocus(e.shiftKey ? -1 : 1)
+          return
+        }
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          e.stopPropagation()
+          // Enter on a focused button is that button's own activation, not a send
+          if (e.composedPath()[0] instanceof HTMLButtonElement) return
+          e.preventDefault()
           if (mode === 'popup') void send()
           return
         }
@@ -1080,6 +1189,8 @@ function boot(): void {
 
     function onScrollOrResize(): void {
       refreshHover()
+      if ((mode === 'popup' || mode === 'sending') && pickedEl !== null) drawOutlineAt(pickedEl)
+      clampPopup()
       positionInflight()
       positionMultiBoxes()
     }

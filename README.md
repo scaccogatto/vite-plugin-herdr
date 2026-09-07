@@ -59,9 +59,9 @@ Outside herdr the same popup composes the same prompt and copies it to the clipb
 | hover | Highlight the element under the cursor |
 | click | Pick the highlighted element, open the popup |
 | `Shift+click` | Add the element to the selection, keep picking |
-| `📷 attach screenshot` | Checkbox, shown only when the screenshot capability is available: attach a real-pixel screenshot of the picked element. Capture is skipped if the tab is hidden; the picked element must be visible on screen (a covered window is captured as-is); a left-aligned Chrome side panel shifts the crop by its width. |
+| `Attach screenshot` | Checkbox, shown only when the screenshot capability is available: attach a real-pixel screenshot of the picked element. Capture is skipped if the tab is hidden; the picked element must be visible on screen (a covered window is captured as-is); a left-aligned Chrome side panel shifts the crop by its width. |
 | `Up` / `Down` | Change the selected agent |
-| `Enter` | Send (or copy, without herdr) |
+| `Enter` or the `Send` button | Send (or copy, without herdr) |
 | `Shift+Enter` | New line in the prompt |
 | `Esc` | Close the popup / disarm the picker |
 | `+ agent here` / `+ agent in worktree` | Start a new agent (split pane, or a fresh worktree) and select it |
@@ -124,7 +124,7 @@ Element 2: nav > a.team-link  140x20 at (860,24)
 Styles: display: inline; color: rgb(59,130,246)
 ````
 
-The screenshot line is opt-in (the `📷 attach screenshot` checkbox) because a pre-registered benchmark, not a feeling, decided it earns its place: on visual tasks the outlined real-pixel screenshot raised success from 60% to 80% and cut turns by 23%, while a bare screenshot (no outline) moved neither number. Full protocol and results are in [docs/payload.md](docs/payload.md).
+The screenshot line is opt-in (the `Attach screenshot` checkbox) because a pre-registered benchmark, not a feeling, decided it earns its place: on visual tasks the outlined real-pixel screenshot raised success from 60% to 80% and cut turns by 23%, while a bare screenshot (no outline) moved neither number. Full protocol and results are in [docs/payload.md](docs/payload.md).
 
 ## How it works
 

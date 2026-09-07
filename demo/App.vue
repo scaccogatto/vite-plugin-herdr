@@ -63,7 +63,7 @@ onUnmounted(() => {
   text-decoration: none;
   padding: 0.5rem 0;
   border-bottom: 2px solid transparent;
-  transition: all 0.2s;
+  transition: color 0.2s, border-color 0.2s;
 }
 
 .nav-links a:hover {

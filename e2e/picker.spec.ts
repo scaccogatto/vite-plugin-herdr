@@ -77,11 +77,19 @@ test.describe('picker with live agents', () => {
     const waiting = page.locator('[data-herdr-host] [role="option"]', { hasText: 'Waiting' })
     await expect(waiting).toHaveAttribute('aria-disabled', 'true')
 
+    // One listbox group per workspace, named for readers; the textarea keeps
+    // focus and points at the selected option the combobox way
+    await expect(page.locator('[data-herdr-host] [role="group"]')).toHaveCount(2)
+    await expect(page.locator('[data-herdr-host] [role="group"]').first()).toHaveAttribute('aria-label', /app/)
+
     const selected = page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')
     await expect(selected).toContainText('Settings polish')
+    const textarea = page.locator('[data-herdr-host] textarea')
+    await expect(textarea).toHaveAttribute('aria-activedescendant', await selected.getAttribute('id') ?? '')
 
     await page.keyboard.press('ArrowDown')
     await expect(selected).toContainText('Long task')
+    await expect(textarea).toHaveAttribute('aria-activedescendant', await selected.getAttribute('id') ?? '')
 
     await page.keyboard.press('ArrowDown')
     await expect(selected).toContainText('Long task')

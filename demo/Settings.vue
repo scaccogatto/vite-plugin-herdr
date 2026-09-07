@@ -12,7 +12,7 @@ const userEmail = ref('chat@marcoboffo.me')
     <nav>
       <a href="#profile">Profile</a>
       <a href="#preferences">Preferences</a>
-      <a href="#about">About</a>
+      <a href="#security">Security</a>
     </nav>
 
     <form @submit.prevent>
@@ -26,17 +26,17 @@ const userEmail = ref('chat@marcoboffo.me')
     </form>
 
     <div class="grid">
-      <div class="card">
+      <div id="profile" class="card">
         <h3>Profile</h3>
         <p>Manage your personal information and account settings. Keep your profile up to date.</p>
       </div>
 
-      <div class="card">
+      <div id="preferences" class="card">
         <h3>Preferences</h3>
         <p>Customize your experience with theme, notifications, and privacy settings.</p>
       </div>
 
-      <div class="card">
+      <div id="security" class="card">
         <h3>Security</h3>
         <p>Secure your account with two-factor authentication and password management.</p>
       </div>

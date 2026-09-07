@@ -21,7 +21,7 @@
 
 ## Send flow
 
-7. User types a prompt (max 20000 characters), optionally changes the selected agent with `Up`/`Down`, and presses `Enter` (`Shift+Enter` inserts a newline instead). Only one send is in flight at a time.
+7. User types a prompt (max 20000 characters), optionally changes the selected agent with `Up`/`Down`, and presses `Enter` or clicks `Send` (`Shift+Enter` inserts a newline instead). Only one send is in flight at a time.
 8. Client-side prompt composition is skipped when herdr is reachable, composition happens server-side instead so relative source hints can be resolved against `server.config.root`; the client sends `{ target, prompt, element, extras?, screenshot? }` as JSON to `POST {endpoint}/prompt` (`extras` and `screenshot` only when a multi-selection or the screenshot checkbox is in play, see the flows below).
 9. The dev server validates same-origin (rejects 403), then JSON content-type, body size (256 KB cap, rejects 413), and shape via `validatePrompt` (rejects 400). Server resolves a relative `hint` to an absolute path via `absolutizeHint`, and composes the final prompt with `composePrompt`. Snippet/style payloads over `inlineMaxChars` (default 1500) are written to a markdown file first and referenced with a `Details: <path>` line.
 10. The server opens one connection to herdr's Unix socket, sends `agent.prompt {target, text}`, and closes it.
@@ -52,7 +52,7 @@ Page/Client        Dev server           herdr socket        Agent pane
 
 ## Screenshot flow
 
-1. The `📷 attach screenshot` checkbox is only shown when live state reports `screenshot: 'available'` (the `screenshot` plugin option, `'auto'` by default meaning macOS only); its checked state persists in `localStorage['herdr:shot']`. Capture is skipped if the tab is hidden (`document.visibilityState !== 'visible'`).
+1. The `Attach screenshot` checkbox is only shown when live state reports `screenshot: 'available'` (the `screenshot` plugin option, `'auto'` by default meaning macOS only); its checked state persists in `localStorage['herdr:shot']`. Capture is skipped if the tab is hidden (`document.visibilityState !== 'visible'`).
 2. If checked at send time, the client hides the popup, makes sure the hover outline and chip are drawn on the picked element (drawing them if they weren't already), and waits two animation frames for that repaint to land on screen before reading `window.screenX`/`screenY`, the browser chrome's top offset (`chromeTop` from outer vs. inner window height), `chromeLeft` (0 on macOS, where Chrome has no side borders and a side panel is right-aligned), `devicePixelRatio`, and the picked element's live bounding rect into the request body. The in-flight box/chip that appear next stay hidden for this same window, so the client's own overlay never lands inside the captured crop; they're revealed once the request settles.
 3. The dev server turns that into a screen region (`screenRegion`): element rect plus window position plus chrome offsets, minus a 40px margin on every side, rounded and clamped to `[16, 4000]` on width/height and `>= 0` on x/y.
 4. The server shells out to `screencapture -x -R <x>,<y>,<w>,<h> <file>` (silent capture, no camera sound) into the temp attachment directory (`screenshotCommand`, overridable for tests), then checks the file exists and is non-empty.
