@@ -86,6 +86,9 @@ test.describe('in-flight outline', () => {
     // miss), and stays a few seconds before the toast takes over.
     await expect(page.locator('[data-herdr-host] .inflight-chip')).toContainText('DONE')
     await expect(page.locator('[data-herdr-host] .inflight-chip')).toHaveClass(/done/)
+    // Settled outlines are solid (dashed means "still working"); only the
+    // still-dashed .inflight itself is the working state.
+    await expect(page.locator('[data-herdr-host] .inflight')).toHaveCSS('border-style', 'solid')
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('DONE', { timeout: 5000 })
     await expect(page.locator('[data-herdr-host] .inflight')).toBeHidden()
     expect(await page.evaluate(() => window.__herdr?.inflight())).toBeNull()

@@ -144,7 +144,7 @@ The screenshot line is opt-in (the `Attach screenshot` switch) because a pre-reg
 [agent pane: Claude Code, Codex, …]
 ```
 
-A sent prompt leaves a solid amber in-flight outline on the picked element until the agent settles (amber reads as "in progress" without borrowing the popup's own selection accent). The dev server watches the target pane after a send and pushes `herdr:status` events over Vite's HMR socket (falling back to polling `/state` when HMR is unavailable, e.g. a dev server started with `server.hmr: false`); a `working` update keeps the outline, `idle`/`done` turns it solid green with a "✓ DONE" chip on the element for three seconds, then clears it with a "✓ DONE" toast, and `blocked` turns it red with a toast asking you to go answer the agent in herdr.
+A sent prompt leaves a dashed in-flight outline on the picked element until the agent settles. The dev server watches the target pane after a send and pushes `herdr:status` events over Vite's HMR socket (falling back to polling `/state` when HMR is unavailable, e.g. a dev server started with `server.hmr: false`); a `working` update keeps the outline, `idle`/`done` turns it solid green with a "✓ DONE" chip on the element for three seconds, then clears it with a "✓ DONE" toast, and `blocked` turns it red with a toast asking you to go answer the agent in herdr.
 
 Agent preselection, in order:
 

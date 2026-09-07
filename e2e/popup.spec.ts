@@ -159,6 +159,36 @@ test.describe('popup interactions', () => {
     await expect(page.locator('[data-herdr-host] textarea')).toBeFocused()
   })
 
+  test('Tab is trapped but frozen while sending', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+    await waitForPreselectedAgent(page)
+
+    await page.route('**/__herdr/prompt', async (route) => {
+      await new Promise((r) => setTimeout(r, 300))
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'agent_blocked', message: 'blocked' }) })
+    })
+    await page.keyboard.press('Enter')
+
+    const dialog = page.getByRole('dialog', { name: 'Send to herdr agent' })
+    await expect(dialog).toHaveClass(/sending/)
+    // Tab must not cycle focus onto the To field or Open in editor while a
+    // request is in flight: Enter there would toggle the list / open the
+    // editor mid-send. Read the shadow root's own activeElement right after
+    // Tab, synchronously (not an auto-retrying matcher): the mocked request
+    // resolves in 300ms and reopenAfterError() refocuses the textarea on its
+    // own, which would otherwise mask a Tab that briefly moved focus away.
+    await page.keyboard.press('Tab')
+    const activeTag = await page.evaluate(() => {
+      const root = document.querySelector('[data-herdr-host]')?.shadowRoot
+      return root?.activeElement instanceof HTMLElement ? root.activeElement.tagName : null
+    })
+    expect(activeTag).toBe('TEXTAREA')
+
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('waiting at a dialog')
+  })
+
   test('the To field shows the preselected agent with its status and the list starts collapsed', async ({ page }) => {
     await arm(page)
     await pickTask(page, 'label')
@@ -211,6 +241,26 @@ test.describe('popup interactions', () => {
     await expect(toRow).toContainText('idle')
   })
 
+  test('Enter/Space on the focused To field toggles the list, never a send', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+    await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+    const before = demo.received().length
+
+    await page.locator('[data-herdr-host] .to-row').focus()
+    await page.keyboard.press('Enter')
+
+    const toRow = page.locator('[data-herdr-host] .to-row')
+    await expect(toRow).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.locator('[data-herdr-host] .agents-groups')).toBeVisible()
+    await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeVisible()
+    expect(demo.received().length).toBe(before)
+
+    await page.keyboard.press('Enter')
+    await expect(toRow).toHaveAttribute('aria-expanded', 'false')
+  })
+
   test('clicking the To field toggles the list', async ({ page }) => {
     await arm(page)
     await pickTask(page, 'label')
@@ -245,6 +295,65 @@ test.describe('popup interactions', () => {
     expect(demo.received()).toEqual([])
     expect(demo.raw().some((r) => r.method === 'agent.start')).toBe(false)
     await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeVisible()
+  })
+
+  test('Down/Up from no selection land on the first/last spawn row, not the second', async ({ context, page }) => {
+    const blockedSnapshot = {
+      ...liveSnapshot,
+      snapshot: {
+        ...liveSnapshot.snapshot,
+        agents: liveSnapshot.snapshot.agents.map((a) => ({ ...a, agent_status: 'blocked' })),
+      },
+    }
+    const demo2 = await startDemo({ snapshot: blockedSnapshot })
+    try {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+      await page.goto(`${demo2.url}#bench`)
+      await arm(page)
+      await pickTask(page, 'label')
+
+      const toRow = page.locator('[data-herdr-host] .to-row')
+      await expect(toRow).toContainText('choose an agent')
+
+      await page.keyboard.press('ArrowDown') // collapsed: expand only, selection unchanged
+      await expect(toRow).toHaveAttribute('aria-expanded', 'true')
+      await page.keyboard.press('ArrowDown') // from nothing: the first selectable row
+      await expect(toRow).toContainText('+ agent here')
+
+      await page.keyboard.press('Escape')
+      await arm(page) // Escape returns to idle mode; re-arm before the next pick
+      await pickTask(page, 'label')
+      await expect(toRow).toContainText('choose an agent')
+      await page.keyboard.press('ArrowUp') // expand only
+      await page.keyboard.press('ArrowUp') // from nothing: the last selectable row
+      await expect(toRow).toContainText('+ agent in worktree')
+    } finally {
+      await demo2.close()
+    }
+  })
+
+  test('with no agents at all, Down selects the first spawn row without expanding an empty strip', async ({ context, page }) => {
+    const emptySnapshot = { ...liveSnapshot, snapshot: { ...liveSnapshot.snapshot, agents: [] } }
+    const demo2 = await startDemo({ snapshot: emptySnapshot })
+    try {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+      await page.goto(`${demo2.url}#bench`)
+      await arm(page)
+      await pickTask(page, 'label')
+
+      const toRow = page.locator('[data-herdr-host] .to-row')
+      await expect(toRow).toContainText('choose an agent')
+
+      await page.keyboard.press('ArrowDown')
+      await expect(toRow).toContainText('+ agent here')
+      await expect(toRow).toHaveAttribute('aria-expanded', 'false')
+      await expect(page.locator('[data-herdr-host] .agents-groups')).toBeHidden()
+
+      await toRow.click()
+      await expect(toRow).toHaveAttribute('aria-expanded', 'false')
+    } finally {
+      await demo2.close()
+    }
   })
 
   test('clipboard mode shows Copy', async ({ context, page }) => {
@@ -285,6 +394,8 @@ test.describe('popup interactions', () => {
     await expect(page.locator('[data-herdr-host] .inflight-chip')).toHaveClass(/blocked/)
     await expect(page.locator('[data-herdr-host] .inflight-chip')).toContainText('blocked')
     await expect(page.locator('[data-herdr-host] .inflight')).toHaveClass(/blocked/)
+    // Settled outlines (done/blocked) are solid; dashed means still working.
+    await expect(page.locator('[data-herdr-host] .inflight')).toHaveCSS('border-style', 'solid')
   })
 
   test('narrow viewport hides the esc hint and the branch column, keeps Send visible', async ({ page }) => {
@@ -365,6 +476,21 @@ test.describe('popup interactions', () => {
     expect(box).not.toBeNull()
     expect(box!.x).toBeGreaterThanOrEqual(0)
     expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  })
+
+  test('the hover chip keeps the full location text at a narrow viewport, clipping the label first', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 })
+    await arm(page)
+    await page.locator('#task-label').hover()
+
+    const chip = page.locator('[data-herdr-host] .chip')
+    await expect(chip).toBeVisible()
+    // The hint (file:line:col) is the more useful half of the chip: it must
+    // render in full, even if that means the label clips first.
+    const hint = chip.locator('span')
+    const hintNotClipped = await hint.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
+    expect(hintNotClipped).toBe(true)
+    await expect(hint).toHaveText(/:\d+:\d+$/)
   })
 
   test('no text under 12px except pane ids', async ({ page }) => {

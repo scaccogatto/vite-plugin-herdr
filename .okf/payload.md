@@ -77,6 +77,6 @@ The pre-registered benchmark (protocol, execution, judge rubric, cost estimate, 
 
 1. Snippet: `data-herdr-picked` marker on the node (numbered `"N"` for extras), plus the `Focus:` line in the prompt.
 2. Screenshot (opt-in, benchmark-promoted): the hover outline stays drawn on the picked element while the dev server captures the crop, so the outline is baked into the pixels.
-3. Live page: a solid amber in-flight outline stays on the element from send until herdr reports the agent idle/done/blocked (amber for working, green for idle/done, red for blocked - one status vocabulary shared by the outline, the in-flight chip, and the agent list's status dot), driven by `herdr:status` events over the HMR socket (v2, shipped; picker popup redesign, 2026-09-07).
+3. Live page: a dashed violet in-flight outline stays on the element from send until herdr reports the agent idle/done/blocked (violet for working, green for idle/done, red for blocked - one status vocabulary shared by the outline, the in-flight chip, and the agent list's status dot), driven by `herdr:status` events over the HMR socket (v2, shipped; picker popup redesign, 2026-09-07).
 
 Full pre-registered benchmark protocol (tasks, variants, execution, judge rubric, decision rule, cost estimate) and the results table live in `docs/payload.md`; see also [Benchmark](benchmark.md) for the OKF-side summary of the same run.

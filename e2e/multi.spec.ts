@@ -82,7 +82,7 @@ test.describe('multi-select with live agents', () => {
     await page.locator('[data-herdr-host] textarea').fill('Fix these together')
     await page.keyboard.press('Enter')
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Settings polish')
 
     const sent = demo.received()
     expect(sent).toHaveLength(1)

@@ -128,7 +128,7 @@ test.describe('picker with live agents', () => {
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
     await page.keyboard.press('Enter')
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Settings polish')
     await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeHidden()
 
     const sent = demo.received()
@@ -154,7 +154,7 @@ test.describe('picker with live agents', () => {
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
     await page.keyboard.press('Enter')
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Settings polish')
 
     await expect
       .poll(

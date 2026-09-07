@@ -130,6 +130,7 @@ function buildChevron(): { svg: SVGElement; path: SVGElement } {
     'stroke-width': '1.5',
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
+    'aria-hidden': 'true',
   })
   const path = svgEl('path', { d: CHEVRON_DOWN })
   svg.appendChild(path)
@@ -144,6 +145,7 @@ function buildEditorIcon(): SVGElement {
     'stroke-width': '1.4',
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
+    'aria-hidden': 'true',
   })
   svg.appendChild(svgEl('path', { d: 'M3 8l5-5M4 3h4v4' }))
   return svg
@@ -157,6 +159,7 @@ function buildCheckIcon(): SVGElement {
     'stroke-width': '1.8',
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
+    'aria-hidden': 'true',
   })
   svg.appendChild(svgEl('path', { d: 'M2.5 6.5 5 9l4.5-6' }))
   return svg
@@ -213,6 +216,12 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 /* the container clips (overflow: hidden above); ellipsis lives on the text
    pieces themselves, which is where a flex container actually applies it */
 .chip b, .inflight-chip b, .chip span, .inflight-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* The hover chip's label and hint would otherwise shrink in proportion to
+   their own content width, so the (usually shorter) hint loses its tail
+   first; the location is the more useful half, so it keeps its size and the
+   label absorbs the clipping. The in-flight chip's span is the agent title,
+   which should keep absorbing width as it always has. */
+.chip span { flex: 0 0 auto; max-width: 55%; }
 .chip b, .inflight-chip b { font-weight: 500; color: var(--accent-ink); }
 .chip i, .inflight-chip i { font-style: normal; color: var(--muted); }
 .inflight-chip.done { color: var(--ok); border-color: var(--ok); }
@@ -227,6 +236,7 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 .inflight { position: fixed; display: none; border: 2px dashed var(--outline); background: var(--veil); pointer-events: none; }
 .inflight.done { border-color: var(--ok); background: var(--ok-veil); }
 .inflight.blocked { border-color: var(--danger); background: var(--danger-veil); }
+.inflight.done, .inflight.blocked { border-style: solid; }
 .toast { position: fixed; display: none; right: 16px; bottom: 16px; padding: 8px 12px; font-size: 13px; line-height: 20px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--chip-shadow); pointer-events: none; max-width: min(320px, calc(100vw - 32px)); }
 .toast.error { border-color: var(--danger); }
 
@@ -1051,6 +1061,10 @@ function boot(): void {
     }
 
     function setExpanded(next: boolean): void {
+      // Nothing to expand into (no workspace groups rendered, e.g. no agents
+      // at all): would otherwise open an empty strip with just padding and a
+      // hairline.
+      if (next && agentsGroups.childElementCount === 0) return
       expanded = next
       agentsGroups.hidden = !next
       toRow.setAttribute('aria-expanded', String(next))
@@ -1274,13 +1288,19 @@ function boot(): void {
 
     function moveSelection(delta: number): void {
       if (selectableAgentIds.length === 0) return
-      if (!expanded) {
+      // Collapsed, with something to expand into: the first Down/Up only
+      // opens the strip, selection unchanged. No workspace groups at all
+      // (e.g. no agents): skip straight to moving between the spawn rows.
+      if (!expanded && agentsGroups.childElementCount > 0) {
         setExpanded(true)
         return
       }
       const idx = selectedPaneId !== null ? selectableAgentIds.indexOf(selectedPaneId) : -1
-      const base0 = idx === -1 ? 0 : idx
-      const nextIdx = Math.max(0, Math.min(selectableAgentIds.length - 1, base0 + delta))
+      // From no selection, Down should land on the first row and Up on the
+      // last - not on the second row, which idx=-1 + delta(+1) => 0+1 would
+      // otherwise skip to.
+      const base = idx === -1 ? (delta > 0 ? -1 : selectableAgentIds.length) : idx
+      const nextIdx = Math.max(0, Math.min(selectableAgentIds.length - 1, base + delta))
       selectedPaneId = selectableAgentIds[nextIdx] ?? null
       updateSelection()
     }
@@ -1401,15 +1421,17 @@ function boot(): void {
         return
       }
       if (pickedInfo === null || pickedEl === null) return
-      // Snapshot the picked element/info now: a screenshot capture waits two
-      // animation frames below, and an Escape landing in that window would
-      // otherwise null out the shared pickedEl/pickedInfo mid-send
+      // Snapshot the picked element/info/extras now: a screenshot capture
+      // waits two animation frames below, and an Escape landing in that
+      // window would otherwise null out pickedEl/pickedInfo and clear
+      // extrasInfo mid-send (close() resets all three)
       const info = pickedInfo
       const el = pickedEl
+      const extras = extrasInfo
 
       const clipboardMode = currentStateResponse === null || currentStateResponse.herdr === false
       if (clipboardMode) {
-        await copyText(composePrompt(info, prompt, { extras: extrasInfo }))
+        await copyText(composePrompt(info, prompt, { extras }))
         showToast('Prompt copied to clipboard')
         close()
         return
@@ -1455,6 +1477,12 @@ function boot(): void {
         if (outline.style.display !== 'block') drawOutlineAt(el)
         await nextFrame()
         await nextFrame()
+        // Esc (or a later pick) landing in this ~two-frame window already
+        // ran close(): mode is no longer 'sending', or a fresh send is now
+        // in flight under a newer seq. Either way this continuation must not
+        // proceed - the popup is hidden, extras were snapshotted above but
+        // the rest of the picked state is gone.
+        if (seq !== sendSeq || mode !== 'sending') return
 
         const rect = el.getBoundingClientRect()
         screenshot = {
@@ -1471,7 +1499,7 @@ function boot(): void {
         target,
         prompt,
         element: info,
-        ...(extrasInfo.length > 0 ? { extras: extrasInfo } : {}),
+        ...(extras.length > 0 ? { extras } : {}),
         ...(screenshot !== undefined ? { screenshot } : {}),
       }
 
@@ -1530,13 +1558,13 @@ function boot(): void {
           return
         }
 
-        await copyText(composePrompt(info, prompt, { extras: extrasInfo }))
+        await copyText(composePrompt(info, prompt, { extras }))
         showToast('herdr unreachable, prompt copied to clipboard', true)
         close()
       } catch {
         revealInflight()
         if (inflightPaneId === target) clearInflight()
-        await copyText(composePrompt(info, prompt, { extras: extrasInfo }))
+        await copyText(composePrompt(info, prompt, { extras }))
         showToast('herdr unreachable, prompt copied to clipboard', true)
         close()
       }
@@ -1603,7 +1631,12 @@ function boot(): void {
         if (e.key === 'Tab') {
           e.preventDefault()
           e.stopPropagation()
-          cycleFocus(e.shiftKey ? -1 : 1)
+          // Keep Tab trapped in the dialog even while sending, but freeze
+          // the cycle itself: .popup.sending only dims controls with
+          // pointer-events, it doesn't disable them, so cycleFocus would
+          // otherwise still walk onto the To field or Open in editor and let
+          // a stray Enter toggle the list / open the editor mid-request.
+          if (mode === 'popup') cycleFocus(e.shiftKey ? -1 : 1)
           return
         }
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
