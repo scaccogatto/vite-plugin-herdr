@@ -11,7 +11,10 @@ export default defineConfig({
   root: resolve(import.meta.dirname, 'demo'),
   plugins: [
     vue(),
-    inspector({ enabled: false, toggleButtonVisibility: 'never', toggleComboKey: false }),
+    // cleanHtml: false keeps data-v-inspector as a real DOM attribute (the plugin's default
+    // strips it into a non-enumerable vnode prop for its own overlay); vite-plugin-herdr's
+    // sourceHint() reads it with getAttribute, so it needs the attribute to actually be there.
+    inspector({ enabled: false, toggleButtonVisibility: 'never', toggleComboKey: false, cleanHtml: false }),
     herdr(),
   ],
   server: { port: 3131 },
