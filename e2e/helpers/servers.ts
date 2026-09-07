@@ -2,6 +2,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { expect, type Page } from '@playwright/test'
 import { createServer, type ViteDevServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import inspector from 'vite-plugin-vue-inspector'
@@ -50,6 +51,16 @@ export function assertExplicitSocketPath(socketPath: string | undefined): assert
   if (typeof socketPath !== 'string' || socketPath.length === 0) {
     throw new Error('startDemo requires an explicit socketPath; refusing to fall back to HERDR_SOCKET_PATH')
   }
+}
+
+/**
+ * Waits for the agent list's GET /state to resolve and preselect an agent
+ * (rendered as an aria-selected option) before the caller sends a prompt in
+ * live-herdr mode: pressing Enter before this resolves can race ahead of it,
+ * and the client falls back to clipboard mode instead of posting /prompt.
+ */
+export async function waitForPreselectedAgent(page: Page): Promise<void> {
+  await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toBeVisible()
 }
 
 /**
