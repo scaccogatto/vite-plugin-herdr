@@ -7,13 +7,16 @@ generated:
   by: claude/fable-5
   at: 2026-09-07
 status: draft
+sources:
+  - resource: ../docs/payload.md
+  - resource: ../docs/flows.md
 ---
 
 ## Study Design
 
 **Objective**: Decide if real screenshots improve agent success on visual tasks without hurting text-only tasks.
 
-**Setup**: 10 tasks on demo's "Bench" view — 5 text changes (label, link, aria-label, color token, typo), 5 visual (card misaligned, spacing, overflow, font-size, hover state). Each task: selector, prompt, expected file and optional expected diff substring.
+**Setup**: 10 tasks on demo's "Bench" view: 5 text changes (label, link, aria-label, color token, typo), 5 visual (card misaligned, spacing, overflow, font-size, hover state). Each task: selector, prompt, expected file and optional expected diff substring.
 
 **Variants**:
 - `text`: Prompt with element + styles only.
@@ -22,7 +25,7 @@ status: draft
 
 **Repetitions**: 3 (may reduce to 2 if cost prohibitive).
 
-**Execution** (`bench/run.ts`): Playwright captures Chromium, `window.__herdr.describe()` extracts ElementInfo, draws outline if needed, `page.screenshot({clip})` saves pixels. Prompt composed with `composePrompt()` + `Screenshot: <path>` line. Headless Claude invoked via CLI (`claude -p "<prompt>"` with limited tools: Read, Edit, Write, Grep, Glob), max 30 turns. Measures num_turns, duration, cost, is_error; verifies `git diff` against expectation.
+**Execution** (`bench/capture.ts` + `bench/run.ts`): Playwright drives Chromium against the demo dev server, `window.__herdr.describe()` extracts `ElementInfo`, draws the outline if the variant needs it, `page.screenshot({clip})` saves real pixels. For each (task, variant, repetition), `bench/run.ts` copies `demo/` into a fresh temp dir (`git init` + one commit), writes a one-paragraph `CLAUDE.md` into that copy ("run headless, single pass, no worktree, no questions") so the global CLAUDE.md conventions (worktree rule, ponytail hook) don't inflate every run's turn count uniformly and mask the signal being measured. Prompt composed with `composePrompt()` + `Screenshot: <path>` line for image variants. Headless Claude invoked via CLI: `claude -p "<prompt>" --output-format json --permission-mode acceptEdits --allowedTools Read,Edit,Write,Grep,Glob --max-turns 30` (tool names re-checked against `claude --help` at launch time, not hardcoded from memory). Measures `num_turns`, `duration_ms`, `total_cost_usd`, `is_error`; verifies `git diff --name-only` against `expectFile` and, when present, `expectContains`. Visual tasks without an `expectContains` get a second `claude -p` judge call instead: given the diff and the task's rubric, it scores 0 (defect not addressed) / 1 (addressed imperfectly) / 2 (matches the ask).
 
 **Cost estimate**: ~90 runs × $0.15-0.40 each ≈ $15-40. Must confirm before launch.
 

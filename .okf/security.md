@@ -7,11 +7,14 @@ generated:
   by: claude/fable-5
   at: 2026-09-07
 status: draft
+sources:
+  - resource: ../README.md
+  - resource: ../docs/stack.md
 ---
 
 ## Principles
 
-1. **Same-origin only**: The browser client can only send to the dev server it's served from. Fetch requests carry browser origin guards (`Sec-Fetch-Site`, `Origin` header); server checks Origin host matches Host header or rejects 403.
+1. **Same-origin only, no token**: The browser client can only send to the dev server it's served from. Fetch requests carry browser origin guards (`Sec-Fetch-Site`, `Origin` header); server checks `Sec-Fetch-Site: same-origin` or `Origin` host matches `Host`, else rejects 403. Deliberately no auth token on top: a request that already passed the same-origin check is one the served page itself made, a token would only re-authenticate a request that's already trusted, adding a secret to manage with no additional safety. This mirrors why a plain localhost server (as MCP Pointer/PinPoint use) is the wrong transport in the first place: any page, not just this one, can reach an open localhost port, so same-origin-via-dev-server is the actual boundary, not a port number.
 
 2. **Page content as data**: HTML snippet, styles, prompt text are from the rendered page. None are executed server-side. Parser treats markup as strings; styles as strings.
 

@@ -7,19 +7,30 @@ generated:
   by: claude/fable-5
   at: 2026-09-07
 status: draft
+sources:
+  - resource: ../docs/flows.md
+  - resource: ../docs/stack.md
 ---
 
 ## Verified Facts (2026-09-07, herdr 0.8.2)
 
-**Socket location**: `$HERDR_SOCKET_PATH` environment variable; fallback `~/.config/herdr/herdr.sock`.
+**Socket location**: `$HERDR_SOCKET_PATH` environment variable; fallback `~/.config/herdr/herdr.sock` (named sessions: `~/.config/herdr/sessions/<name>/herdr.sock`).
 
-**Protocol**: NDJSON (one JSON object per line). Methods: `session.snapshot` (returns version, protocol, workspace list, agent list), `agent.list` (agents unfiltered), `agent.prompt {target, text}` (sends prompt, rejects `blocked` agents).
+**Framing**: NDJSON over the Unix socket, one JSON object per line. Request: `{ id, method, params }`, all three required. Success reply: `{ id, result: { type, ... } }`. Error reply: `{ id, error: { code, message } }`, `code` is free-form (not an enum the client can exhaustively switch on). No auth beyond filesystem permissions on the socket path. One request per connection is the documented-safe pattern; only `events.subscribe` keeps a connection open.
 
-**Agents**: Hand-started agents have no `name` field; address by `pane_id`. Read from `session.snapshot`.
+**Methods used by this plugin**:
+- `session.snapshot {}` → workspaces, agents (`AgentInfo`), panes, tabs, layouts, focused ids, `version`, `protocol`. This is the one call `GET /state` needs.
+- `agent.prompt {target, text, wait?}` → `{ type: 'agent_prompted', agent }`. Multi-line `text` is sent as bracketed paste plus `Enter`. Rejects with `agent_blocked` if the target agent is waiting at a dialog; a `working` agent accepts and queues the input (Claude Code does this).
 
-**Multiline**: `agent.prompt` handles multiline text.
+**Methods reserved for v2** (not called by v0/v1): `events.subscribe {subscriptions:[{type:'pane.agent_status_changed', pane_id}]}` (pane_id required per subscription, no unsubscribe, close the socket to stop), `pane.split`, `agent.start {name, kind, pane_id, args?, timeout_ms?}` (pane must be an idle shell), `worktree.create {cwd?, branch?, base?, path?, label?, workspace_id?, focus?}` → `{workspace, tab, root_pane, worktree}`.
 
-**Environment in panes**: `HERDR_ENV`, `HERDR_SOCKET_PATH`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, `HERDR_PANE_ID` (set when running inside herdr).
+**Error codes observed**: `agent_blocked`, `agent_prompt_stalled`, `not_found`, `invalid_params`, `busy`, `agent_not_ready`.
+
+**Agents**: `AgentInfo` carries `pane_id`, `workspace_id`, `tab_id`, `agent_status` (`idle | working | blocked | done | unknown`), `focused`, `agent` (kind), `cwd`, `terminal_title_stripped`, `tokens.branch`, `agent_session`, and an optional `name`. Hand-started agents have no `name`: address by `pane_id`. Names, when present, only come from `agent.start` or `agent.rename` and match `[a-z][a-z0-9_-]{0,31}`.
+
+**Multiline**: `agent.prompt` handles multiline text natively (bracketed paste), no client-side escaping needed.
+
+**Environment in panes**: `HERDR_ENV=1`, `HERDR_SOCKET_PATH`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, `HERDR_PANE_ID` (set only when the process is running inside a herdr pane; their absence is exactly the plugin's "no herdr" signal).
 
 ## Server Bridge
 
