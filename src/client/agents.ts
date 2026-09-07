@@ -50,6 +50,15 @@ export function selectableIds(groups: AgentGroup[]): string[] {
   return groups.flatMap((g) => g.agents.filter((a) => a.agent_status !== 'blocked').map((a) => a.pane_id))
 }
 
+/// Label of the workspace the dev server's own pane sits in - not necessarily herdr's currently
+/// focused workspace (see WorkspaceRow.focused), so "+ agent here" (which splits a pane next to
+/// the dev server's own, wherever that is) names this one specifically. Null when workspaceId is
+/// unset, no workspace matches it, or the match has no label - callers show a generic fallback
+/// rather than falling back to the raw workspace id.
+export function devWorkspaceLabel(state: LiveState): string | null {
+  return state.workspaces.find((w) => w.workspace_id === state.workspaceId)?.label ?? null
+}
+
 /// Preselect a target agent: last used pane, then last used session, then a live agent in the
 /// current workspace, then any focused agent, then the first selectable agent
 export function pickAgent(state: LiveState, last: { pane_id: string; session: string | null } | null): string | null {

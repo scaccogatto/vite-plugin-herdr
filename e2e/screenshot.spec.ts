@@ -77,7 +77,7 @@ test.describe('screenshot option on', () => {
     await waitForPreselectedAgent(page)
     await page.keyboard.press('Enter')
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Settings polish')
     expect(await page.evaluate(() => window.__herdr?.screenshotEnabled())).toBe(true)
 
     const sent = demo.received()
@@ -122,12 +122,54 @@ test.describe('screenshot option on', () => {
     await waitForPreselectedAgent(page)
     await page.keyboard.press('Enter')
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Settings polish')
 
     const sent = demo.received()
     const lastSent = sent[sent.length - 1]
     expect(lastSent).toBeDefined()
     const text = lastSent!.text
     expect(text).not.toContain('Screenshot: ')
+  })
+
+  test('Esc during the screenshot capture window cancels the send, nothing is sent', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+
+    const checkbox = page.locator('[data-herdr-host] .shot-row input[type="checkbox"]')
+    await expect(checkbox).toBeVisible()
+    await checkbox.check()
+    await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+    const before = demo.received().length
+
+    // send() awaits two animation frames while the screenshot rect is read
+    // (popup hidden, outline drawn); freeze requestAnimationFrame behind a
+    // manual queue so the test can land Escape inside that window
+    // deterministically instead of racing a real ~32ms gap.
+    await page.evaluate(() => {
+      const queue: FrameRequestCallback[] = []
+      Object.assign(window, {
+        __flush: () => {
+          const q = queue.splice(0)
+          for (const cb of q) cb(performance.now())
+        },
+      })
+      window.requestAnimationFrame = (cb) => {
+        queue.push(cb)
+        return queue.length
+      }
+    })
+
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeHidden()
+
+    // Two frames: the rect read waits on both before the fetch is issued.
+    await page.evaluate(() => (window as unknown as { __flush: () => void }).__flush())
+    await page.evaluate(() => (window as unknown as { __flush: () => void }).__flush())
+    await page.waitForTimeout(50)
+
+    expect(demo.received().length).toBe(before)
+    expect(await page.evaluate(() => window.__herdr?.inflight() ?? null)).toBeNull()
   })
 })

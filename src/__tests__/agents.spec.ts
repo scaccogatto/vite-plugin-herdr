@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
-import { groupAgents, selectableIds, pickAgent } from '../client/agents.ts'
+import { groupAgents, selectableIds, pickAgent, devWorkspaceLabel } from '../client/agents.ts'
 import type { LiveState } from '../client/agents.ts'
 import type { AgentRow, WorkspaceRow } from '../types.ts'
 
@@ -191,5 +191,27 @@ describe('pickAgent', () => {
       agents: [agent({ pane_id: 'w1:p1', workspace_id: 'w1', agent_status: 'blocked' })],
     })
     expect(pickAgent(allBlocked, null)).toBeNull()
+  })
+})
+
+describe('devWorkspaceLabel', () => {
+  it('returns the label of the workspace matching workspaceId', () => {
+    const s = state({ workspaceId: 'w1', workspaces: [workspace({ workspace_id: 'w1', label: 'app' })] })
+    expect(devWorkspaceLabel(s)).toBe('app')
+  })
+
+  it('returns null when workspaceId is null', () => {
+    const s = state({ workspaceId: null, workspaces: [workspace({ workspace_id: 'w1', label: 'app' })] })
+    expect(devWorkspaceLabel(s)).toBeNull()
+  })
+
+  it('returns null when no workspace matches workspaceId', () => {
+    const s = state({ workspaceId: 'w3F', workspaces: [workspace({ workspace_id: 'w1', label: 'app' })] })
+    expect(devWorkspaceLabel(s)).toBeNull()
+  })
+
+  it('returns null when the matching workspace has no label, without falling back to the raw id', () => {
+    const s = state({ workspaceId: 'w1', workspaces: [workspace({ workspace_id: 'w1', label: null })] })
+    expect(devWorkspaceLabel(s)).toBeNull()
   })
 })

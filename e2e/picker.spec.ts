@@ -66,20 +66,26 @@ test.describe('picker with live agents', () => {
   test('lists grouped agents with the idle agent preselected and supports arrow navigation', async ({ page }) => {
     await arm(page)
     await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
 
     const listbox = page.locator('[data-herdr-host] [role="listbox"]')
     await expect(listbox).toContainText('app')
     await expect(listbox).toContainText('docs')
 
-    const options = page.locator('[data-herdr-host] [role="option"]')
-    await expect(options).toHaveCount(3)
+    // Agent options only; the two spawn rows are options too, so a plain
+    // [role="option"] count is 5 (3 agents + 2 spawn rows).
+    const agentOptions = page.locator('[data-herdr-host] [role="option"]:not(.spawn-row)')
+    await expect(agentOptions).toHaveCount(3)
+    await expect(page.locator('[data-herdr-host] [role="option"]')).toHaveCount(5)
 
     const waiting = page.locator('[data-herdr-host] [role="option"]', { hasText: 'Waiting' })
     await expect(waiting).toHaveAttribute('aria-disabled', 'true')
 
-    // One listbox group per workspace, named for readers; the textarea keeps
-    // focus and points at the selected option the combobox way
-    await expect(page.locator('[data-herdr-host] [role="group"]')).toHaveCount(2)
+    // One listbox group per workspace plus the spawn group, named for
+    // readers; toHaveCount counts attached elements, so the two workspace
+    // groups inside the collapsed wrapper still count. The textarea keeps
+    // focus and points at the selected option the combobox way.
+    await expect(page.locator('[data-herdr-host] [role="group"]')).toHaveCount(3)
     await expect(page.locator('[data-herdr-host] [role="group"]').first()).toHaveAttribute('aria-label', /app/)
 
     const selected = page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')
@@ -87,13 +93,29 @@ test.describe('picker with live agents', () => {
     const textarea = page.locator('[data-herdr-host] textarea')
     await expect(textarea).toHaveAttribute('aria-activedescendant', await selected.getAttribute('id') ?? '')
 
+    // The list starts collapsed: the first ArrowDown only expands it.
+    await page.keyboard.press('ArrowDown')
+    await expect(page.locator('[data-herdr-host] .to-row')).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.locator('[data-herdr-host] .agents-groups')).toBeVisible()
+    await expect(selected).toContainText('Settings polish')
+
     await page.keyboard.press('ArrowDown')
     await expect(selected).toContainText('Long task')
     await expect(textarea).toHaveAttribute('aria-activedescendant', await selected.getAttribute('id') ?? '')
 
     await page.keyboard.press('ArrowDown')
-    await expect(selected).toContainText('Long task')
+    await expect(selected).toContainText('+ agent here')
 
+    await page.keyboard.press('ArrowDown')
+    await expect(selected).toContainText('+ agent in worktree')
+
+    await page.keyboard.press('ArrowDown')
+    await expect(selected).toContainText('+ agent in worktree')
+
+    await page.keyboard.press('ArrowUp')
+    await expect(selected).toContainText('+ agent here')
+    await page.keyboard.press('ArrowUp')
+    await expect(selected).toContainText('Long task')
     await page.keyboard.press('ArrowUp')
     await expect(selected).toContainText('Settings polish')
   })
@@ -106,7 +128,7 @@ test.describe('picker with live agents', () => {
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
     await page.keyboard.press('Enter')
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Settings polish')
     await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeHidden()
 
     const sent = demo.received()
@@ -132,7 +154,7 @@ test.describe('picker with live agents', () => {
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
     await page.keyboard.press('Enter')
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Settings polish')
 
     await expect
       .poll(

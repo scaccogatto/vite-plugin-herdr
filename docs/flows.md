@@ -7,7 +7,7 @@
 3. If the hit lands inside an `<svg>`, the client walks up to the `<svg>` element itself rather than the inner shape.
 4. The plugin's own shadow-DOM host is excluded from hit-testing, you can never pick the picker.
 5. On click, the client freezes the current target, resolves `sourceHint`, `selectorPath`, a trimmed HTML snippet with the picked node marked `data-herdr-picked`, a computed-style summary, and the bounding rect.
-6. The popup opens: a textarea (autofocus), and the agent list fetched from `GET {endpoint}/state`, grouped by workspace, agents sorted by workspace `number`.
+6. The popup opens: a textarea (autofocus), and the agent list fetched from `GET {endpoint}/state`, grouped by workspace, agents sorted by workspace `number`. The list starts collapsed behind a To field showing the preselected target (name, status, branch, pane); Up or Down (or a click on the To field) expands it.
 
 ## Multi-select flow
 
@@ -21,8 +21,8 @@
 
 ## Send flow
 
-7. User types a prompt (max 20000 characters), optionally changes the selected agent with `Up`/`Down`, and presses `Enter` or clicks `Send` (`Shift+Enter` inserts a newline instead). Only one send is in flight at a time.
-8. Client-side prompt composition is skipped when herdr is reachable, composition happens server-side instead so relative source hints can be resolved against `server.config.root`; the client sends `{ target, prompt, element, extras?, screenshot? }` as JSON to `POST {endpoint}/prompt` (`extras` and `screenshot` only when a multi-selection or the screenshot checkbox is in play, see the flows below).
+7. User types a prompt (max 4000 characters in the popup; the server itself caps at 20000), optionally opens the agent list with `Up`/`Down` (collapsed by default) and changes the selection with `Up`/`Down` (the To field mirrors every move), and presses `Enter` or clicks `Send` (`Shift+Enter` inserts a newline instead). Only one send is in flight at a time.
+8. Client-side prompt composition is skipped when herdr is reachable, composition happens server-side instead so relative source hints can be resolved against `server.config.root`; the client sends `{ target, prompt, element, extras?, screenshot? }` as JSON to `POST {endpoint}/prompt` (`extras` and `screenshot` only when a multi-selection or the screenshot switch is in play, see the flows below). When the selected target is a spawn row instead of an agent, the spawn flow below runs first and its resulting pane id becomes `target`.
 9. The dev server validates same-origin (rejects 403), then JSON content-type, body size (256 KB cap, rejects 413), and shape via `validatePrompt` (rejects 400). Server resolves a relative `hint` to an absolute path via `absolutizeHint`, and composes the final prompt with `composePrompt`. Snippet/style payloads over `inlineMaxChars` (default 1500) are written to a markdown file first and referenced with a `Details: <path>` line.
 10. The server opens one connection to herdr's Unix socket, sends `agent.prompt {target, text}`, and closes it.
 11. herdr delivers the text to the chosen pane as bracketed paste plus `Enter`; a working agent (e.g. Claude Code) queues it as its next turn.
@@ -52,7 +52,7 @@ Page/Client        Dev server           herdr socket        Agent pane
 
 ## Screenshot flow
 
-1. The `Attach screenshot` checkbox is only shown when live state reports `screenshot: 'available'` (the `screenshot` plugin option, `'auto'` by default meaning macOS only); its checked state persists in `localStorage['herdr:shot']`. Capture is skipped if the tab is hidden (`document.visibilityState !== 'visible'`).
+1. The `Attach screenshot` switch is only shown when live state reports `screenshot: 'available'` (the `screenshot` plugin option, `'auto'` by default meaning macOS only); its checked state persists in `localStorage['herdr:shot']`. Capture is skipped if the tab is hidden (`document.visibilityState !== 'visible'`).
 2. If checked at send time, the client hides the popup, makes sure the hover outline and chip are drawn on the picked element (drawing them if they weren't already), and waits two animation frames for that repaint to land on screen before reading `window.screenX`/`screenY`, the browser chrome's top offset (`chromeTop` from outer vs. inner window height), `chromeLeft` (0 on macOS, where Chrome has no side borders and a side panel is right-aligned), `devicePixelRatio`, and the picked element's live bounding rect into the request body. The in-flight box/chip that appear next stay hidden for this same window, so the client's own overlay never lands inside the captured crop; they're revealed once the request settles.
 3. The dev server turns that into a screen region (`screenRegion`): element rect plus window position plus chrome offsets, minus a 40px margin on every side, rounded and clamped to `[16, 4000]` on width/height and `>= 0` on x/y.
 4. The server shells out to `screencapture -x -R <x>,<y>,<w>,<h> <file>` (silent capture, no camera sound) into the temp attachment directory (`screenshotCommand`, overridable for tests), then checks the file exists and is non-empty.
@@ -66,16 +66,17 @@ After the send returns (step 12 above), the server opens a new persistent connec
 
 ## Spawn flow
 
-When the user clicks `+ agent here` or `+ agent in worktree` in the popup, or calls the `POST {endpoint}/spawn` endpoint directly:
+The `+ agent here` and `+ agent in worktree` rows always sit at the end of the agent list (visible even while the list is collapsed). Selecting one (click, or `Down` past the last agent) just sets it as the To target, the same as selecting any agent; nothing is spawned yet. The spawn itself happens as the first step of a send, triggered by `Enter` or `Send` with a spawn row selected, or by calling the `POST {endpoint}/spawn` endpoint directly:
 
-1. Client sends `{ mode: 'here' | 'worktree', name?, branch? }` as JSON to the spawn endpoint.
+1. The popup enters its `sending` state (form dimmed, `Send` reads "Sending…", a second `Enter` is a no-op) before the client sends `{ mode: 'here' | 'worktree', name?, branch? }` as JSON to the spawn endpoint.
 2. **Mode "here"** requires `HERDR_PANE_ID` set on the dev server process. The server calls `pane.split {direction: 'right', target_pane_id: HERDR_PANE_ID, cwd: root}` to create a sibling pane, then `agent.start {name, kind: 'claude', pane_id: newPaneId}` to start a claude agent in that pane, with a 70-second timeout.
 3. **Mode "worktree"** calls `worktree.create {workspace_id: HERDR_WORKSPACE_ID, branch?, focus: false}` to create a new workspace/pane pair, then `agent.start` in its root pane.
-4. The server returns `{ ok: true, pane_id, name, workspace_id }` to the client.
+4. The server returns `{ ok: true, pane_id, name, workspace_id }` to the client. The client reloads the agent list (so `findTitle`/`findSession` can see the new pane) and continues the same send it already started: the new pane id becomes `target`, and the prompt goes out to it exactly like a send to any other agent, ending in one "Sent to ..." toast and a closed popup.
+5. On failure (network error, or a non-200 response), an error toast shows the reason, the agent list still reloads, and the popup reopens with the draft prompt intact so the same or a different target can be retried - nothing was sent.
 
 ## Clipboard fallback
 
-13. Before opening the popup, the client already has the result of `GET {endpoint}/state`. If the response is `{ herdr: false, reason, message }` (no socket reachable, or protocol below 20), the popup shows no agent list, only the textarea.
+13. Before opening the popup, the client already has the result of `GET {endpoint}/state`. If the response is `{ herdr: false, reason, message }` (no socket reachable, or protocol below 20), a notice takes the To field's place (`herdr not reachable (<reason>): Enter copies the prompt`) and the agent list underneath renders no groups and no spawn rows.
 14. On `Enter`, the client composes the prompt itself instead of asking the server (the source hint stays relative, since the Vite root isn't known client-side) and writes it to the clipboard via the Clipboard API.
 15. A toast confirms the copy and names the reason herdr wasn't used, so the user knows to paste it into their agent by hand.
 

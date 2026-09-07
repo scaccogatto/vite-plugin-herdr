@@ -42,6 +42,24 @@ export interface DemoServer {
 }
 
 /**
+ * Looks up the target pane's own title in a `session.snapshot` fixture (the
+ * shape `fixtures.ts` exports), so the fake herdr's `agent.prompt` answer
+ * names the actual agent instead of a fixed placeholder - real herdr's
+ * terminal_title_stripped is the pane's own title on every response, and the
+ * client's "Sent to ..." toast reads it back. Falls back to a placeholder
+ * for snapshots or targets this can't resolve (fixtures shaped differently).
+ */
+function titleForTarget(snapshot: unknown, target: unknown): string {
+  if (typeof target !== 'string') return 'Fake agent'
+  const agents = (snapshot as { snapshot?: { agents?: unknown } } | null)?.snapshot?.agents
+  if (!Array.isArray(agents)) return 'Fake agent'
+  const agent = agents.find((a) => (a as { pane_id?: unknown })?.pane_id === target) as
+    | { terminal_title_stripped?: unknown }
+    | undefined
+  return typeof agent?.terminal_title_stripped === 'string' ? agent.terminal_title_stripped : 'Fake agent'
+}
+
+/**
  * Asserts a socketPath is an explicit, non-empty string. startDemo always
  * computes one itself (a fake herdr socket, or a fresh empty directory) and
  * never lets the plugin fall back to HERDR_SOCKET_PATH, which on a developer
@@ -58,9 +76,13 @@ export function assertExplicitSocketPath(socketPath: string | undefined): assert
  * (rendered as an aria-selected option) before the caller sends a prompt in
  * live-herdr mode: pressing Enter before this resolves can race ahead of it,
  * and the client falls back to clipboard mode instead of posting /prompt.
+ * The selected option sits inside the collapsed (hidden) groups wrapper by
+ * default, so this only asserts it is attached, not visible; callers that
+ * need the To row itself can additionally check that.
  */
 export async function waitForPreselectedAgent(page: Page): Promise<void> {
-  await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toBeVisible()
+  await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toBeAttached()
+  await expect(page.locator('[data-herdr-host] .to-row')).not.toBeEmpty()
 }
 
 /**
@@ -76,7 +98,10 @@ export async function startDemo(opts: StartDemoOptions): Promise<DemoServer> {
           'agent.prompt': (params) =>
             opts.promptError
               ? { __error: opts.promptError }
-              : { type: 'agent_prompted', agent: { pane_id: params.target, terminal_title_stripped: 'Fake agent' } },
+              : {
+                  type: 'agent_prompted',
+                  agent: { pane_id: params.target, terminal_title_stripped: titleForTarget(opts.snapshot, params.target) },
+                },
           ...opts.handlers,
         })
       : null

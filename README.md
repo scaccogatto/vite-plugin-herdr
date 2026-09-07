@@ -59,12 +59,12 @@ Outside herdr the same popup composes the same prompt and copies it to the clipb
 | hover | Highlight the element under the cursor |
 | click | Pick the highlighted element, open the popup |
 | `Shift+click` | Add the element to the selection, keep picking |
-| `Attach screenshot` | Checkbox, shown only when the screenshot capability is available: attach a real-pixel screenshot of the picked element. Capture is skipped if the tab is hidden; the picked element must be visible on screen (a covered window is captured as-is); a left-aligned Chrome side panel shifts the crop by its width. |
-| `Up` / `Down` | Change the selected agent |
+| `Attach screenshot` | Switch, shown only when the screenshot capability is available: attach a real-pixel screenshot of the picked element. Capture is skipped if the tab is hidden; the picked element must be visible on screen (a covered window is captured as-is); a left-aligned Chrome side panel shifts the crop by its width. |
+| `Up` / `Down` | Opens the agent list (collapsed by default); once open, moves the selection, and the To field mirrors it |
 | `Enter` or the `Send` button | Send (or copy, without herdr) |
 | `Shift+Enter` | New line in the prompt |
 | `Esc` | Close the popup / disarm the picker |
-| `+ agent here` / `+ agent in worktree` | Start a new agent (split pane, or a fresh worktree) and select it |
+| `+ agent here` / `+ agent in worktree` | Select one (click, or `Down` past the last agent), then `Enter` or `Send` starts the agent (split pane, or a fresh worktree) and sends to it |
 
 ## Configuration
 
@@ -75,7 +75,7 @@ herdr({
   enabled: true,
   endpoint: '/__herdr',
   appendTo: undefined, // regex for meta-framework injection
-  screenshot: 'auto', // offer the screenshot checkbox; auto = macOS only
+  screenshot: 'auto', // offer the screenshot switch; auto = macOS only
   screenshotCommand: 'screencapture', // advanced: override for a test double
   snippet: { maxDepth: 3, maxLines: 60, inlineMaxChars: 1500 },
 })
@@ -88,7 +88,7 @@ herdr({
 | `enabled` | `true` | Set `false` to disable without removing the plugin |
 | `endpoint` | `'/__herdr'` | Route prefix for the state, prompt and spawn endpoints, mounted under `server.config.base` |
 | `appendTo` | `undefined` | Append the client import to matching modules instead of injecting a script tag; needed by meta-frameworks |
-| `screenshot` | `'auto'` | Offer the screenshot checkbox; `auto` = macOS only. `true` forces it on, `false` turns it off |
+| `screenshot` | `'auto'` | Offer the screenshot switch; `auto` = macOS only. `true` forces it on, `false` turns it off |
 | `screenshotCommand` | `'screencapture'` | Advanced: the command that captures the screenshot; override only to point at a test double |
 | `snippet.maxDepth` | `3` | Ancestor levels captured around the picked node |
 | `snippet.maxLines` | `60` | Max lines in the trimmed HTML snippet |
@@ -124,7 +124,7 @@ Element 2: nav > a.team-link  140x20 at (860,24)
 Styles: display: inline; color: rgb(59,130,246)
 ````
 
-The screenshot line is opt-in (the `Attach screenshot` checkbox) because a pre-registered benchmark, not a feeling, decided it earns its place: on visual tasks the outlined real-pixel screenshot raised success from 60% to 80% and cut turns by 23%, while a bare screenshot (no outline) moved neither number. Full protocol and results are in [docs/payload.md](docs/payload.md).
+The screenshot line is opt-in (the `Attach screenshot` switch) because a pre-registered benchmark, not a feeling, decided it earns its place: on visual tasks the outlined real-pixel screenshot raised success from 60% to 80% and cut turns by 23%, while a bare screenshot (no outline) moved neither number. Full protocol and results are in [docs/payload.md](docs/payload.md).
 
 ## How it works
 
@@ -153,7 +153,7 @@ Agent preselection, in order:
 3. The focused agent, wherever it is.
 4. The first agent in the list.
 
-No agent fits? `+ agent here` calls `POST {endpoint}/spawn` with `mode: 'here'`, which splits a pane next to the dev server's own (needs `HERDR_PANE_ID`, i.e. the dev server itself running in a herdr pane) and starts Claude Code there; `+ agent in worktree` uses `mode: 'worktree'` to create a fresh herdr worktree workspace first. Either way the popup reloads the agent list and selects the new one automatically.
+No agent fits? The agent list always ends with two rows, `+ agent here` and `+ agent in worktree`; select one (click, or `Down` past the last agent) and the To field shows it as the target the same way it shows any agent. `Enter` or `Send` then does both steps at once: it calls `POST {endpoint}/spawn` first (`mode: 'here'` splits a pane next to the dev server's own, which needs `HERDR_PANE_ID`, i.e. the dev server itself running in a herdr pane, and starts Claude Code there; `mode: 'worktree'` creates a fresh herdr worktree workspace first), then sends the prompt straight to the new pane and closes the popup with the same "Sent to ..." toast as any other send. A spawn failure reopens the popup with your draft intact and the agent list reloaded, ready to retry.
 
 ## Source hints
 
@@ -197,7 +197,7 @@ For plain Vite SPA/MPA apps, `transformIndexHtml` injection (the default) is the
 - Node 20+
 - herdr 0.8.2+ (socket protocol 20) to send prompts; older or absent herdr falls back to clipboard
 - macOS or Linux; Windows needs `HERDR_SOCKET_PATH` set manually
-- Screenshot checkbox (macOS only): the terminal app running the dev server needs Screen Recording permission for `screencapture` to work; macOS prompts for it the first time and remembers the choice
+- Screenshot switch (macOS only): the terminal app running the dev server needs Screen Recording permission for `screencapture` to work; macOS prompts for it the first time and remembers the choice
 
 ## Benchmark
 

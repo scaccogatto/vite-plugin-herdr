@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { startDemo, type DemoServer } from './helpers/servers.ts'
+import { startDemo, waitForPreselectedAgent, type DemoServer } from './helpers/servers.ts'
 import { liveSnapshot } from './helpers/fixtures.ts'
 
 async function arm(page: Page): Promise<void> {
@@ -19,7 +19,7 @@ async function sendPrompt(page: Page): Promise<void> {
   // shows up as an aria-selected option) before sending: otherwise Enter can
   // race ahead of it and the client falls back to clipboard mode, which
   // never posts /prompt at all - not the race this file exists to cover.
-  await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toBeVisible()
+  await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toBeAttached()
   await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
   await page.keyboard.press('Enter')
 }
@@ -73,6 +73,11 @@ test.describe('in-flight outline', () => {
     await waitForInflight(page, 'w1:p2')
     await waitForFreshSubscription(demo, beforeSubscribe)
 
+    // The 200 response alone (no status push yet) must already flip the
+    // chip from "sending" to "working" - otherwise it reads "sending"
+    // indefinitely whenever no herdr:status event arrives first.
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toContainText('working')
+
     demo.fake!.pushEvent({
       event: 'pane.agent_status_changed',
       data: { pane_id: 'w1:p2', workspace_id: 'w1', agent_status: 'working', title: 'Settings polish' },
@@ -86,6 +91,9 @@ test.describe('in-flight outline', () => {
     // miss), and stays a few seconds before the toast takes over.
     await expect(page.locator('[data-herdr-host] .inflight-chip')).toContainText('DONE')
     await expect(page.locator('[data-herdr-host] .inflight-chip')).toHaveClass(/done/)
+    // Settled outlines are solid (dashed means "still working"); only the
+    // still-dashed .inflight itself is the working state.
+    await expect(page.locator('[data-herdr-host] .inflight')).toHaveCSS('border-style', 'solid')
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('DONE', { timeout: 5000 })
     await expect(page.locator('[data-herdr-host] .inflight')).toBeHidden()
     expect(await page.evaluate(() => window.__herdr?.inflight())).toBeNull()
@@ -110,6 +118,50 @@ test.describe('in-flight outline', () => {
     })
 
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('waiting for you', { timeout: 5000 })
+  })
+
+  test('hovering the in-flight element again does not show a duplicate hover chip', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await sendPrompt(page)
+    await waitForInflight(page, 'w1:p2')
+
+    // Enter picking mode again and hover the very element that is in
+    // flight: only its own in-flight chip should be shown, not a second
+    // hover chip stacked on top of it.
+    await arm(page)
+    await page.locator('#task-label').hover()
+
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toBeVisible()
+    await expect(page.locator('[data-herdr-host] .chip')).toBeHidden()
+  })
+
+  test('a blocked chip with a long title repositions instead of running off-screen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 })
+    const beforeSubscribe = subscribeCount(demo)
+    await arm(page)
+    await pickTask(page, 'label')
+    await sendPrompt(page)
+
+    await waitForInflight(page, 'w1:p2')
+    await waitForFreshSubscription(demo, beforeSubscribe)
+
+    demo.fake!.pushEvent({
+      event: 'pane.agent_status_changed',
+      data: {
+        pane_id: 'w1:p2',
+        workspace_id: 'w1',
+        agent_status: 'blocked',
+        title: 'A very long agent title that would overflow a narrow viewport if the chip were not repositioned',
+      },
+    })
+
+    const chip = page.locator('[data-herdr-host] .inflight-chip')
+    await expect(chip).toHaveClass(/blocked/)
+    const box = await chip.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390)
   })
 })
 
@@ -144,12 +196,20 @@ test.describe('spawn buttons', () => {
       await arm(page)
       await pickTask(page, 'label')
 
-      await page.getByRole('button', { name: '+ agent here' }).click()
+      await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+      await page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' }).click()
+      await expect(page.locator('[data-herdr-host] .to-row')).toContainText('+ agent here')
+      await page.keyboard.press('Enter')
 
-      await expect(page.locator('[data-herdr-host] .toast')).toContainText('Started')
-      const option = page.locator('[data-herdr-host] [role="option"][data-pane-id="w1:p9"]')
-      await expect(option).toBeVisible()
-      await expect(option).toHaveAttribute('aria-selected', 'true')
+      // Enter dispatches the keydown synchronously but the spawn-then-send
+      // is async (two fetches); wait for the toast (itself a poll) before
+      // reading the fake herdr's request log or it can be checked too early.
+      await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to')
+      expect(demo.raw().some((r) => r.method === 'agent.start')).toBe(true)
+      expect(demo.received().at(-1)?.target).toBe('w1:p9')
+      const last = await page.evaluate(() => localStorage.getItem('herdr:last'))
+      expect(last !== null && JSON.parse(last).pane_id).toBe('w1:p9')
+      await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeHidden()
     } finally {
       await demo.close()
     }
@@ -171,14 +231,148 @@ test.describe('spawn buttons', () => {
       await arm(page)
       await pickTask(page, 'label')
 
-      await page.getByRole('button', { name: '+ agent here' }).click()
+      await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+      await page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' }).click()
+      await page.keyboard.press('Enter')
 
       // The real server message is "dev server is not running inside a herdr
       // pane"; assert the stable, herdr-pane-specific fragment of it.
       await expect(page.locator('[data-herdr-host] .toast')).toContainText('inside a herdr pane')
+      await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeVisible()
+      await expect(page.locator('[data-herdr-host] .popup')).not.toHaveClass(/sending/)
+      expect(demo.received()).toEqual([])
+      // The "starting agent…" notice was swapped back for the To row once the
+      // reload re-picked an agent (Settings polish, the fixture's idle one).
+      await expect(page.locator('[data-herdr-host] .to-row')).toBeVisible()
+      await expect(page.locator('[data-herdr-host] .to-row')).toContainText('Settings polish')
+
+      // A retry is still possible: picking the spawn row again puts it back
+      // in the To field.
+      await page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' }).click()
+      await expect(page.locator('[data-herdr-host] .to-row')).toContainText('+ agent here')
     } finally {
       await demo.close()
       if (prevPaneId !== undefined) process.env.HERDR_PANE_ID = prevPaneId
     }
   })
+
+  test('spawn rows are reachable by keyboard and Enter spawns then sends', async ({ context, page }) => {
+    const agents = [...liveSnapshot.snapshot.agents]
+    const demo = await startDemo({
+      snapshot: { ...liveSnapshot, snapshot: { ...liveSnapshot.snapshot, agents } },
+      env: { HERDR_WORKSPACE_ID: 'w1', HERDR_PANE_ID: 'w1:p1' },
+      handlers: {
+        'pane.split': () => ({ type: 'pane_split', pane: { pane_id: 'w1:p9' } }),
+        'agent.start': () => {
+          agents.push({
+            pane_id: 'w1:p9',
+            workspace_id: 'w1',
+            agent_status: 'idle',
+            focused: false,
+            agent: 'claude',
+            cwd: null,
+            terminal_title_stripped: 'Claude Code',
+            tokens: { branch: ' main' },
+            agent_session: { source: 'herdr:claude', agent: 'claude', kind: 'id', value: 's9' },
+          })
+          return { type: 'agent_started', agent: { pane_id: 'w1:p9' } }
+        },
+      },
+    })
+
+    try {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+      await page.goto(`${demo.url}#bench`)
+      await arm(page)
+      await pickTask(page, 'label')
+      await waitForPreselectedAgent(page)
+
+      await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+      // 1st ArrowDown: expand, no move (still Settings polish). 2nd: Long
+      // task. 3rd: + agent here (the two spawn rows follow the agents in
+      // selectableAgentIds order).
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('ArrowDown')
+      await expect(page.locator('[data-herdr-host] .to-row')).toContainText('+ agent here')
+      // HERDR_WORKSPACE_ID=w1 resolves to the fixture's 'app' label: the hint
+      // names the dev server's own workspace, not just a bare "split pane".
+      await expect(page.locator('[data-herdr-host] .to-row')).toContainText('split pane in app')
+
+      await page.keyboard.press('Enter')
+
+      // Enter dispatches the keydown synchronously but the spawn-then-send
+      // is async (two fetches); wait for the toast (itself a poll) before
+      // reading the fake herdr's request log or it can be checked too early.
+      await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to')
+      expect(demo.raw().some((r) => r.method === 'agent.start')).toBe(true)
+      expect(demo.received().at(-1)?.target).toBe('w1:p9')
+      const last = await page.evaluate(() => localStorage.getItem('herdr:last'))
+      expect(last !== null && JSON.parse(last).pane_id).toBe('w1:p9')
+      await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeHidden()
+    } finally {
+      await demo.close()
+    }
+  })
+
+  test('Esc during a spawn cancels the pending continuation, nothing is sent', async ({ context, page }) => {
+    const demo = await startDemo({ snapshot: liveSnapshot })
+
+    try {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+      await page.goto(`${demo.url}#bench`)
+      await arm(page)
+      await pickTask(page, 'label')
+      await waitForPreselectedAgent(page)
+
+      const before = demo.received().length
+      const snapshotsBefore = demo.raw().filter((r) => r.method === 'session.snapshot').length
+      await page.route('**/__herdr/spawn', async (route) => {
+        await new Promise((r) => setTimeout(r, 400))
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, pane_id: 'w1:p9', name: 'x', workspace_id: 'w1' }),
+        })
+      })
+
+      const spawnRow = page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' })
+      const spawnTitle = spawnRow.locator('.agent-title')
+      const beforeColor = await spawnTitle.evaluate((el) => getComputedStyle(el).color)
+
+      await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+      await spawnRow.click()
+      await page.keyboard.press('Enter')
+
+      const dialog = page.getByRole('dialog', { name: 'Send to herdr agent' })
+      await expect(dialog).toHaveClass(/sending/)
+      await expect(page.locator('[data-herdr-host] .agents-notice')).toContainText('starting agent')
+
+      // Rows in progress get their own "busy" marker, not the blocked
+      // look: the spawn row's title must stay its normal accent-ink color,
+      // never fall to the blocked/muted color aria-disabled alone used to
+      // trigger.
+      await expect(spawnRow).toHaveClass(/busy/)
+      expect(await spawnTitle.evaluate((el) => getComputedStyle(el).color)).toBe(beforeColor)
+
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeHidden()
+
+      // The delayed /spawn response lands regardless of Escape, and its own
+      // success path always reloads the agent list (GET /state -> a fresh
+      // session.snapshot call) before the sendSeq guard is even checked;
+      // wait for that reload, the step immediately before the guard, rather
+      // than a fixed timeout, so this only asserts once the continuation has
+      // actually had its chance to (wrongly) send.
+      await expect.poll(() => demo.raw().filter((r) => r.method === 'session.snapshot').length).toBeGreaterThan(snapshotsBefore)
+      // ...then let the guarded continuation's own microtask tail finish.
+      await page.waitForTimeout(50)
+
+      expect(demo.received().length).toBe(before)
+      expect(await page.evaluate(() => window.__herdr?.inflight() ?? null)).toBeNull()
+    } finally {
+      await demo.close()
+    }
+  })
+
 })

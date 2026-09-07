@@ -26,7 +26,7 @@
     <!-- Task 4: Color contrast -->
     <section class="task-section">
       <p class="task-caption">Note styling</p>
-      <p id="task-color" class="note">Important information should be clearly visible.</p>
+      <p id="task-color" class="note"><span class="note-text">Important information should be clearly visible.</span></p>
     </section>
 
     <!-- Task 5: Placeholder copy -->

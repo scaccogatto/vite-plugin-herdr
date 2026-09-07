@@ -164,6 +164,29 @@ export function sourceHint(el: Element): string | null {
   return null
 }
 
+/** Strip the trailing ` (source)` / ` (source, ancestor)` parenthetical `sourceHint` appends, for display; the full hint stays available separately (e.g. in a `title` attribute) */
+export function stripHintSuffix(hint: string): string {
+  return hint.replace(/ \([^()]*\)$/, '')
+}
+
+/** `in a › b › c` for the ancestors of a `selectorPath` output (segments joined by ` > ` or ` >>> `), dropping the last (picked) segment; `null` when there are no ancestors */
+export function popupPathLabel(path: string): string | null {
+  const segments = path.split(/ > | >>> /).filter((s) => s.length > 0)
+  if (segments.length <= 1) return null
+  return `in ${segments.slice(0, -1).join(' › ')}`
+}
+
+/** Visible "where" text for a spawn row / the To field's spawn hint: `kind` picks the action, `devLabel` (the dev server's own workspace label, or null when unknown) fills in the location for "here" */
+export function spawnHint(kind: 'here' | 'worktree', devLabel: string | null): string {
+  if (kind === 'worktree') return 'fresh worktree'
+  return devLabel !== null ? `split pane in ${devLabel}` : 'split pane next to the dev server'
+}
+
+/** Truncate from the start, keeping the tail: for text where the end matters more than the beginning (e.g. a file path's line:col, the useful half of a source hint) */
+export function truncateStart(value: string, max: number): string {
+  return value.length > max ? `…${value.slice(-(max - 1))}` : value
+}
+
 const ID_RE = /^[A-Za-z_][\w-]*$/
 const CLASS_RE = /^[a-z_-][\w-]*$/i
 

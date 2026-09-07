@@ -82,7 +82,7 @@ test.describe('multi-select with live agents', () => {
     await page.locator('[data-herdr-host] textarea').fill('Fix these together')
     await page.keyboard.press('Enter')
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Settings polish')
 
     const sent = demo.received()
     expect(sent).toHaveLength(1)
@@ -94,6 +94,25 @@ test.describe('multi-select with live agents', () => {
     expect(body).toContain('Element 3')
     expect(body).toContain('data-herdr-picked="2"')
     expect(body).toContain('data-herdr-picked="3"')
+  })
+
+  test('multi-select boxes sit under the popup in shadow-root paint order', async ({ page }) => {
+    await arm(page)
+    await shiftClickTask(page, 'label')
+    await pickTask(page, 'link')
+
+    const order = await page.evaluate(() => {
+      const shadow = document.querySelector('[data-herdr-host]')?.shadowRoot
+      if (shadow === undefined || shadow === null) return []
+      return [...shadow.children].map((el) => el.className)
+    })
+    const multiIdx = order.findIndex((c) => c.split(' ').includes('multi'))
+    const popupIdx = order.findIndex((c) => c.split(' ').includes('popup'))
+    expect(multiIdx).toBeGreaterThanOrEqual(0)
+    expect(popupIdx).toBeGreaterThanOrEqual(0)
+    // Later siblings paint on top: the box must come before the popup so the
+    // popup (and its own chrome) is never covered by a stray selection box.
+    expect(multiIdx).toBeLessThan(popupIdx)
   })
 
   test('Esc while picking clears the selection', async ({ page }) => {
