@@ -1,15 +1,16 @@
 ---
 type: Experiment
 title: Payload variant comparison
-description: Measure if images (screenshot, outline) improve agent task success; decide scope for v1
+description: Measured whether images (screenshot, outline) improve agent task success; the outlined screenshot shipped as opt-in
 tags: [benchmark, image-payload, screenshot, outline, cost]
 generated:
   by: claude/fable-5
   at: 2026-09-07
-status: draft
+status: stable
 sources:
   - resource: ../docs/payload.md
   - resource: ../docs/flows.md
+  - resource: ../docs/bench/2026-09-07/summary.md
 ---
 
 ## Study Design
@@ -39,3 +40,20 @@ Outline: only if it beats text+shot on visual metrics, and only when it qualifie
 `bench/results/<date>.json`: raw data (tasks, variants, runs, success, turns, cost).
 Markdown table: variant, success rate, avg turns, avg cost, first-try pass rate.
 Log entry to `.okf/log.md` with decision + numbers.
+
+## Results
+
+Run on 2026-09-07 with Claude Sonnet 5 through `claude -p` (`--reps 1`): 10 tasks × 3 variants, 30 headless runs, 0 errors after retrying transient CLI failures, total cost ≈ $4. Raw data: `docs/bench/2026-09-07/runs.jsonl`; rendered summary: `docs/bench/2026-09-07/summary.md`.
+
+| Variant | Kind | n | successRate | meanTurns | meanCostUsd | rightFileRate |
+|---|---|---|---|---|---|---|
+| text | edit | 5 | 100% | 3.8 | $0.11 | 100% |
+| text | visual | 5 | 60% | 6.0 | $0.14 | 80% |
+| text+shot | edit | 5 | 100% | 4.0 | $0.11 | 100% |
+| text+shot | visual | 5 | 60% | 5.4 | $0.13 | 80% |
+| text+shot+outline | edit | 5 | 100% | 3.4 | $0.10 | 100% |
+| text+shot+outline | visual | 5 | 80% | 4.6 | $0.13 | 80% |
+
+**Decision**: the outlined screenshot ships. Edit tasks land on the right file every time regardless of variant (source hints already do the heavy lifting there). A bare screenshot (`text+shot`) moves nothing on visual tasks versus `text` alone and costs more time. Only `text+shot+outline` clears the decision rule on visual tasks: +20 points of success (60% → 80%) and a 23% cut in mean turns (6.0 → 4.6), with no regression on edit tasks. Per the pre-registered rule, this promotes the screenshot into the product (v2) as an opt-in, always-outlined feature; the bare/no-outline variant never ships.
+
+**Caveat**: five visual tasks at one repetition each is a small sample - the gap traces mostly to one task (`hover`) that only the outlined variant solved. The direction is what the decision rests on, not the exact decimals; a `--reps 3` re-run would firm up the numbers without being expected to change the call.

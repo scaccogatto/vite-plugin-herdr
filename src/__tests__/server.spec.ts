@@ -161,7 +161,20 @@ describe('getState', () => {
       paneId: 'w33:p1',
       workspaces: [{ workspace_id: 'w33', label: 'dotfiles', number: 1, focused: false }],
       agents: [toAgentRow(sampleAgent)],
+      screenshot: 'off',
     })
+  })
+
+  it('reports the screenshot availability passed in', async () => {
+    fake = await startFakeHerdr({
+      'session.snapshot': () => ({
+        type: 'session_snapshot',
+        snapshot: { version: '0.8.2', protocol: '20', workspaces: [], agents: [] },
+      }),
+    })
+
+    const state = await getState(fake.socketPath, {}, 'available')
+    expect(state).toMatchObject({ herdr: true, screenshot: 'available' })
   })
 
   it('returns herdr:false reason protocol for protocol 19', async () => {
@@ -210,10 +223,10 @@ describe('postPrompt', () => {
 
     const result = await postPrompt(
       { target: 'w1:p1', prompt: 'make it red', element },
-      { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir },
+      { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir, screenshotCommand: 'screencapture', screenshotEnabled: false },
     )
 
-    expect(result).toEqual({ ok: true, target: 'w1:p1', title: 'my agent', pane_id: null })
+    expect(result).toEqual({ ok: true, target: 'w1:p1', title: 'my agent', pane_id: null, screenshot: null })
     expect(fake.received).toHaveLength(1)
     const sent = fake.received[0]
     expect(sent?.method).toBe('agent.prompt')
@@ -236,10 +249,10 @@ describe('postPrompt', () => {
 
     const result = await postPrompt(
       { target: 'agent-name', prompt: 'make it red', element },
-      { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir },
+      { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir, screenshotCommand: 'screencapture', screenshotEnabled: false },
     )
 
-    expect(result).toEqual({ ok: true, target: 'agent-name', title: 'my agent', pane_id: 'w1:p9' })
+    expect(result).toEqual({ ok: true, target: 'agent-name', title: 'my agent', pane_id: 'w1:p9', screenshot: null })
   })
 
   it('writes an attachment file when over inlineMaxChars', async () => {
@@ -250,7 +263,7 @@ describe('postPrompt', () => {
 
     const result = await postPrompt(
       { target: 'w1:p1', prompt: 'make it red', element },
-      { socketPath: fake.socketPath, inlineMaxChars: 5, roots: ['/repo'], attachmentDir },
+      { socketPath: fake.socketPath, inlineMaxChars: 5, roots: ['/repo'], attachmentDir, screenshotCommand: 'screencapture', screenshotEnabled: false },
     )
 
     expect(result.ok).toBe(true)
@@ -284,7 +297,7 @@ describe('postPrompt', () => {
 
       const result = await postPrompt(
         { target: 'w1:p1', prompt: 'make it red', element, extras: [extra] },
-        { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir },
+        { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir, screenshotCommand: 'screencapture', screenshotEnabled: false },
       )
 
       expect(result.ok).toBe(true)
@@ -307,7 +320,7 @@ describe('postPrompt', () => {
       // element alone renders well under 200 chars; adding the extra pushes it over
       const result = await postPrompt(
         { target: 'w1:p1', prompt: 'make it red', element, extras: [extra] },
-        { socketPath: fake.socketPath, inlineMaxChars: 200, roots: ['/repo'], attachmentDir },
+        { socketPath: fake.socketPath, inlineMaxChars: 200, roots: ['/repo'], attachmentDir, screenshotCommand: 'screencapture', screenshotEnabled: false },
       )
 
       expect(result.ok).toBe(true)

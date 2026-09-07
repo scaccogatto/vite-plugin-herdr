@@ -30,6 +30,7 @@ function state(overrides: Partial<LiveState>): LiveState {
     paneId: null,
     workspaces: [],
     agents: [],
+    screenshot: 'off',
     ...overrides,
   }
 }

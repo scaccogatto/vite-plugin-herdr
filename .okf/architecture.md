@@ -10,6 +10,7 @@ status: stable
 sources:
   - resource: ../docs/stack.md
   - resource: ../README.md
+  - resource: ../docs/payload.md
 ---
 
 ## System Decomposition
@@ -18,14 +19,14 @@ Eight modules organize the plugin: four on Node (server), three on DOM (client),
 
 | File | Responsibility |
 |---|---|
-| `src/index.ts` | Plugin entry: `resolveOptions`, `VIRTUAL_ID` constant, `resolveId` mapping virtual to real client, `transformIndexHtml` injection of client `<script>`, `configureServer` mounting the two routes |
-| `src/server.ts` | Socket bridge: `mountRoutes`, `getState`, `toAgentRow`, `toWorkspaceRow`, `absolutizeHint`, `postPrompt`, `validateSpawn`, `spawnAgent`, `watchAgent`, `writeAttachment`, `cleanupAttachments` (24-hour file expiry) |
+| `src/index.ts` | Plugin entry: `resolveOptions`, `VIRTUAL_ID` constant, `resolveId` mapping virtual to real client, `transformIndexHtml` injection of client `<script>`, `configureServer` mounting the three routes |
+| `src/server.ts` | Socket bridge: `mountRoutes`, `getState`, `toAgentRow`, `toWorkspaceRow`, `absolutizeHint`, `postPrompt`, `validateSpawn`, `spawnAgent`, `watchAgent`, `writeAttachment`, `cleanupAttachments` (24-hour expiry for `.md` and `.png`), `screenshotAvailability(option, platform?)`, `screenRegion(shot, margin?)`, `captureScreenshot(region, file, command)` (`execFile` + `stat`, throws `HerdrError('screenshot_failed')`) |
 | `src/herdr.ts` | Socket client: `request(socketPath, method, params, timeoutMs)` (one connection per request), `subscribe`, `parseLine`, `HerdrError { code }`, `httpStatus(code)`, `resolveSocketPath` |
-| `src/http.ts` | Guards and I/O: `isSameOrigin(headers)` same-origin check, `readJson(req, maxBytes)` with 256 KB cap, `validatePrompt(body)` 20000-char cap, `sendJson` response writer |
-| `src/compose.ts` | Pure shared: `renderAttachment(el)` markdown serializer, `composePrompt(el, prompt, { attachmentPath? })` ASCII prompt builder |
-| `src/client/index.ts` | UI host: shadow-DOM picker, hotkey listener, pick mode with outline sync, popup, send, copy fallback, toast; exposes `window.__herdr = { describe, outline }` for bench |
+| `src/http.ts` | Guards and I/O: `isSameOrigin(headers)` same-origin check, `readJson(req, maxBytes)` with 256 KB cap, `validateElement`, `validatePrompt(body)` (20000-char cap, up to 4 `extras`, optional `screenshot`), `sendJson` response writer |
+| `src/compose.ts` | Pure shared: `renderAttachment(el, extras?)` markdown serializer with `## Element N` sections, `composePrompt(el, prompt, { attachmentPath?, extras?, screenshotPath? })` ASCII prompt builder |
+| `src/client/index.ts` | UI host: shadow-DOM picker, hotkey listener, pick mode with outline sync, shift+click multi-selection (numbered boxes, up to 5 elements total), popup with the screenshot checkbox (shown only when live state reports `screenshot: 'available'`, persisted in `localStorage['herdr:shot']`), send, copy fallback, toast, in-flight outline driven by `herdr:status` HMR events (falls back to polling `/state`); exposes `window.__herdr = { version, describe, outline, pick, close, inflight, selection, screenshotEnabled }` for e2e/bench |
 | `src/client/dom.ts` | Pure DOM helpers: `parseHotkey`, `deepElementFromPoint`, `sourceHint`, `selectorPath`, `trimHtml`, `styleSummary`, `describeElement` |
-| `src/client/agents.ts` | Pure state: `groupAgents(state)`, `pickAgent(state, last)` |
+| `src/client/agents.ts` | Pure state: `groupAgents(state)`, `selectableIds(groups)`, `pickAgent(state, last)` |
 
 ## Build Strategy
 
@@ -48,6 +49,9 @@ interface Options {
   socketPath?: string              // $HERDR_SOCKET_PATH, fallback ~/.config/herdr/herdr.sock
   enabled?: boolean                // true
   endpoint?: string                // /__herdr
+  appendTo?: string | RegExp       // meta-framework client injection
+  screenshot?: boolean | 'auto'    // 'auto': available only on darwin
+  screenshotCommand?: string       // 'screencapture'; advanced, points at a test double
   snippet?: { maxDepth?, maxLines?, inlineMaxChars? }  // 3, 60, 1500
 }
 ```
@@ -56,8 +60,10 @@ Server endpoints:
 
 | Route | Method | Request | Response |
 |-------|--------|---------|----------|
-| `{base}/__herdr/state` | GET | none | 200: `StateResponse`; 403: cross-origin; 502: socket missing |
-| `{base}/__herdr/prompt` | POST | JSON max 256KB | 200: `PromptResponse`; 400/409/413: error; 502/503: server errors |
+| `{base}/__herdr/state` | GET | none | 200: `StateResponse` (live branch carries `screenshot: 'available' \| 'unsupported' \| 'off'`); 403: cross-origin; 502: socket missing |
+| `{base}/__herdr/prompt` | POST | JSON max 256KB, `element` + up to 4 `extras` + optional `screenshot` | 200: `PromptResponse` (`screenshot: string \| null`, the captured PNG path); 400/409/413: error; 502/503: server errors |
 | `{base}/__herdr/spawn` | POST | JSON max 64KB | 200: `SpawnResponse`; 400/409/413: error; 502/503: server errors |
+
+A screenshot capture failure inside `postPrompt` never surfaces as an HTTP error: it is caught, logged with `console.warn('[vite-plugin-herdr] screenshot failed: ...')`, and the prompt still goes out without the `Screenshot:` line.
 
 Client does not read `import.meta.env`; it parses hotkey and endpoint from query string injected at `transformIndexHtml`.

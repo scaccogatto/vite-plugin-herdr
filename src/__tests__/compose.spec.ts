@@ -398,6 +398,52 @@ Make it blue`
       expect(composePrompt(el, 'test', { extras: [] })).toBe(composePrompt(el, 'test'))
     })
   })
+
+  describe('with screenshotPath', () => {
+    it('adds the Screenshot line right before the --- separator, after Styles', () => {
+      const el = createElementInfo()
+      const result = composePrompt(el, 'test', { screenshotPath: '/tmp/vite-plugin-herdr/1726000000000-abc123.png' })
+
+      const lines = result.split('\n')
+      const dashIndex = lines.indexOf('---')
+      expect(lines[dashIndex - 1]).toBe(
+        'Screenshot: /tmp/vite-plugin-herdr/1726000000000-abc123.png (real pixels, the picked element is outlined, 40px margin)',
+      )
+    })
+
+    it('adds the Screenshot line after Details: in the attachment variant', () => {
+      const el = createElementInfo()
+      const result = composePrompt(el, 'test', { attachmentPath: '/tmp/element.md', screenshotPath: '/tmp/shot.png' })
+
+      const lines = result.split('\n')
+      const detailsIndex = lines.findIndex((l) => l.startsWith('Details:'))
+      expect(lines[detailsIndex + 1]).toBe('Screenshot: /tmp/shot.png (real pixels, the picked element is outlined, 40px margin)')
+      expect(lines[detailsIndex + 2]).toBe('---')
+    })
+
+    it('adds the Screenshot line after the extras block', () => {
+      const el = createElementInfo()
+      const extra: ElementInfo = {
+        url: 'http://localhost:3000/page',
+        viewport: { w: 1440, h: 900 },
+        hint: null,
+        path: 'body > main > a.link',
+        rect: { x: 10, y: 20, w: 100, h: 30 },
+        html: '<a class="link" data-herdr-picked="">Team</a>',
+        styles: {},
+      }
+      const result = composePrompt(el, 'test', { extras: [extra], screenshotPath: '/tmp/shot.png' })
+
+      const lines = result.split('\n')
+      const dashIndex = lines.indexOf('---')
+      expect(lines[dashIndex - 1]).toBe('Screenshot: /tmp/shot.png (real pixels, the picked element is outlined, 40px margin)')
+    })
+
+    it('omits the Screenshot line when screenshotPath is not provided', () => {
+      const el = createElementInfo()
+      expect(composePrompt(el, 'test')).not.toContain('Screenshot:')
+    })
+  })
 })
 
 describe('renderAttachment with extras', () => {

@@ -202,6 +202,52 @@ describe('plugin wires the herdr routes', () => {
   })
 })
 
+describe('plugin screenshot availability on /state', () => {
+  it('reports screenshot: off when the plugin option is false', async () => {
+    const fake = await startFakeHerdr({ 'session.snapshot': () => snapshot })
+    const server = await createServer({
+      configFile: false,
+      root: fixtures,
+      logLevel: 'silent',
+      server: { port: 0, host: '127.0.0.1' },
+      plugins: [herdr({ socketPath: fake.socketPath, screenshot: false })],
+    })
+    await server.listen()
+    const url = server.resolvedUrls!.local[0]!.replace(/\/$/, '')
+
+    try {
+      const res = await fetch(`${url}/__herdr/state`, { headers: { origin: url } })
+      const body = (await res.json()) as { screenshot: string }
+      expect(body.screenshot).toBe('off')
+    } finally {
+      await server.close()
+      await fake.close()
+    }
+  }, 20000)
+
+  it('reports screenshot: available when the plugin option is true', async () => {
+    const fake = await startFakeHerdr({ 'session.snapshot': () => snapshot })
+    const server = await createServer({
+      configFile: false,
+      root: fixtures,
+      logLevel: 'silent',
+      server: { port: 0, host: '127.0.0.1' },
+      plugins: [herdr({ socketPath: fake.socketPath, screenshot: true })],
+    })
+    await server.listen()
+    const url = server.resolvedUrls!.local[0]!.replace(/\/$/, '')
+
+    try {
+      const res = await fetch(`${url}/__herdr/state`, { headers: { origin: url } })
+      const body = (await res.json()) as { screenshot: string }
+      expect(body.screenshot).toBe('available')
+    } finally {
+      await server.close()
+      await fake.close()
+    }
+  }, 20000)
+})
+
 describe('plugin without herdr', () => {
   it('reports herdr as unreachable instead of failing', async () => {
     const missing = join(mkdtempSync(join(tmpdir(), 'vph-')), 'none.sock')

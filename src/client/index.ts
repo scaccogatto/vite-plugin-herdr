@@ -6,6 +6,7 @@ import type {
   ErrorResponse,
   PromptRequest,
   PromptResponse,
+  ScreenshotRequest,
   SpawnResponse,
   StateResponse,
 } from '../types.ts'
@@ -27,6 +28,8 @@ export interface HerdrApi {
   inflight(): string | null
   /** Selector paths of the elements added to the multi-selection via shift+click */
   selection(): string[]
+  /** Whether the attach-screenshot checkbox is currently checked */
+  screenshotEnabled(): boolean
 }
 
 declare global {
@@ -38,6 +41,7 @@ declare global {
 type Mode = 'idle' | 'picking' | 'popup' | 'sending'
 
 const LAST_KEY = 'herdr:last'
+const SHOT_KEY = 'herdr:shot'
 const EDITOR_HINT_RE = /^(.+?):(\d+)(?::(\d+))?/
 
 interface Last {
@@ -62,6 +66,22 @@ function writeLast(last: Last): void {
     localStorage.setItem(LAST_KEY, JSON.stringify(last))
   } catch {
     // storage unavailable (private mode, quota) - preselection just falls back next time
+  }
+}
+
+function readShotPref(): boolean {
+  try {
+    return localStorage.getItem(SHOT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeShotPref(checked: boolean): void {
+  try {
+    localStorage.setItem(SHOT_KEY, checked ? '1' : '0')
+  } catch {
+    // storage unavailable (private mode, quota) - preference just won't persist
   }
 }
 
@@ -95,6 +115,7 @@ const STYLE = `
 .popup-editor-btn { margin-top: 4px; background: none; border: 1px solid #45475a; color: #cba6f7; border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
 .popup textarea { display: block; width: calc(100% - 24px); margin: 8px 12px; padding: 6px 8px; background: #181825; color: #cdd6f4; border: 1px solid #45475a; border-radius: 6px; font: inherit; resize: vertical; }
 .popup textarea.invalid { border-color: #f38ba8; }
+.shot-row { display: none; align-items: center; gap: 6px; margin: 0 12px 8px; font-size: 12px; color: #cdd6f4; cursor: pointer; }
 .spawn-area { display: flex; gap: 6px; margin: 0 12px 8px; }
 .spawn-btn { flex: 1; background: none; border: 1px solid #45475a; color: #cba6f7; border-radius: 4px; padding: 4px 6px; font-size: 11px; cursor: pointer; }
 .spawn-btn:disabled { opacity: 0.5; cursor: default; }
@@ -183,6 +204,19 @@ function boot(): void {
     textarea.rows = 3
     textarea.maxLength = 4000
 
+    const shotRow = document.createElement('label')
+    shotRow.className = 'shot-row'
+
+    const shotCheckbox = document.createElement('input')
+    shotCheckbox.type = 'checkbox'
+    shotCheckbox.checked = readShotPref()
+    shotCheckbox.addEventListener('change', () => writeShotPref(shotCheckbox.checked))
+
+    const shotLabel = document.createElement('span')
+    shotLabel.textContent = '📷 attach screenshot'
+
+    shotRow.append(shotCheckbox, shotLabel)
+
     const spawnArea = document.createElement('div')
     spawnArea.className = 'spawn-area'
     spawnArea.style.display = 'none'
@@ -207,7 +241,7 @@ function boot(): void {
     footer.className = 'popup-footer'
     footer.textContent = 'Enter send · Shift+Enter newline · ↑↓ agent · Esc close'
 
-    popup.append(header, textarea, spawnArea, agentsArea, footer)
+    popup.append(header, textarea, shotRow, spawnArea, agentsArea, footer)
 
     const toast = document.createElement('div')
     toast.className = 'toast'
@@ -238,10 +272,20 @@ function boot(): void {
     let currentStateResponse: StateResponse | null = null
     let selectableAgentIds: string[] = []
     let selectedPaneId: string | null = null
+    let screenshotAvailable = false
 
     let inflightPaneId: string | null = null
     let inflightTitle: string | null = null
     let inflightEl: Element | null = null
+    // True while a screenshot capture is in flight server-side: the box/chip
+    // stay tracked (so a fast herdr:status event is still honored) but hidden,
+    // so our own overlay doesn't land inside the captured crop
+    let inflightHidden = false
+    // True once a herdr:status event has settled this pane (blocked/idle/done)
+    // - a herdr:status push can now race ahead of the /prompt response itself,
+    // so send() checks this before showing its own "Sent to ..." toast, which
+    // would otherwise clobber the more specific settle toast just shown
+    let inflightSettled = false
     let inflightSettleTimer: ReturnType<typeof setTimeout> | undefined
     let inflightPollTimer: ReturnType<typeof setInterval> | undefined
 
@@ -340,8 +384,8 @@ function boot(): void {
       return inflightTitle ?? inflightPaneId ?? ''
     }
 
-    function renderInflightChip(): void {
-      inflightChip.textContent = `→ ${inflightLabel()} · working…`
+    function renderInflightChip(suffix = 'working…'): void {
+      inflightChip.textContent = `→ ${inflightLabel()} · ${suffix}`
     }
 
     function positionInflight(): void {
@@ -374,6 +418,8 @@ function boot(): void {
       inflightPaneId = null
       inflightTitle = null
       inflightEl = null
+      inflightHidden = false
+      inflightSettled = false
       inflightBox.style.display = 'none'
       inflightBox.style.borderColor = ''
       inflightChip.style.display = 'none'
@@ -385,6 +431,7 @@ function boot(): void {
     }
 
     function settleInflightFinished(): void {
+      inflightSettled = true
       const label = inflightLabel()
       inflightBox.style.borderColor = '#a6e3a1'
       inflightChip.style.display = 'none'
@@ -397,6 +444,7 @@ function boot(): void {
     }
 
     function settleInflightBlocked(): void {
+      inflightSettled = true
       const label = inflightLabel()
       inflightBox.style.borderColor = '#f38ba8'
       inflightChip.style.display = 'none'
@@ -444,7 +492,7 @@ function boot(): void {
       }, 2000)
     }
 
-    function startInflight(paneId: string, title: string | null, el: Element): void {
+    function startInflight(paneId: string, title: string | null, el: Element, chipSuffix = 'working…', hidden = false): void {
       stopInflightPoll()
       if (inflightSettleTimer !== undefined) {
         clearTimeout(inflightSettleTimer)
@@ -453,12 +501,27 @@ function boot(): void {
       inflightPaneId = paneId
       inflightTitle = title
       inflightEl = el
+      inflightHidden = hidden
+      inflightSettled = false
       inflightBox.style.borderColor = ''
-      inflightBox.style.display = 'block'
-      renderInflightChip()
-      inflightChip.style.display = 'block'
+      inflightBox.style.display = hidden ? 'none' : 'block'
+      renderInflightChip(chipSuffix)
+      inflightChip.style.display = hidden ? 'none' : 'block'
       positionInflight()
       if (!import.meta.hot) startInflightPoll(paneId)
+    }
+
+    // Reveals a box/chip that startInflight drew hidden during a screenshot
+    // capture, once the request that carried it has settled (success or
+    // failure) - the capture itself finishes server-side before that point,
+    // so there is no risk of it landing in the crop
+    function revealInflight(): void {
+      if (!inflightHidden) return
+      inflightHidden = false
+      if (inflightPaneId === null) return
+      inflightBox.style.display = 'block'
+      inflightChip.style.display = 'block'
+      positionInflight()
     }
 
     function handleStatusEvent(event: { pane_id: string; agent_status: string; title: string | null }): void {
@@ -616,6 +679,8 @@ function boot(): void {
 
     function renderAgents(state: StateResponse): void {
       currentStateResponse = state
+      screenshotAvailable = state.herdr && state.screenshot === 'available'
+      shotRow.style.display = screenshotAvailable ? 'flex' : 'none'
       agentsArea.innerHTML = ''
       spawnArea.style.display = state.herdr ? 'flex' : 'none'
 
@@ -743,6 +808,8 @@ function boot(): void {
       currentStateResponse = null
       selectedPaneId = null
       spawnArea.style.display = 'none'
+      screenshotAvailable = false
+      shotRow.style.display = 'none'
 
       popup.style.display = 'flex'
       positionPopup(x, y)
@@ -783,17 +850,31 @@ function boot(): void {
       return currentStateResponse.agents.find((a) => a.pane_id === paneId)?.session ?? null
     }
 
+    function findTitle(paneId: string): string | null {
+      if (currentStateResponse === null || !currentStateResponse.herdr) return null
+      return currentStateResponse.agents.find((a) => a.pane_id === paneId)?.title ?? null
+    }
+
+    function nextFrame(): Promise<void> {
+      return new Promise((r) => requestAnimationFrame(() => r()))
+    }
+
     async function send(): Promise<void> {
       const prompt = textarea.value.trim()
       if (prompt.length === 0) {
         flashInvalid()
         return
       }
-      if (pickedInfo === null) return
+      if (pickedInfo === null || pickedEl === null) return
+      // Snapshot the picked element/info now: a screenshot capture waits two
+      // animation frames below, and an Escape landing in that window would
+      // otherwise null out the shared pickedEl/pickedInfo mid-send
+      const info = pickedInfo
+      const el = pickedEl
 
       const clipboardMode = currentStateResponse === null || currentStateResponse.herdr === false
       if (clipboardMode) {
-        await copyText(composePrompt(pickedInfo, prompt, { extras: extrasInfo }))
+        await copyText(composePrompt(info, prompt, { extras: extrasInfo }))
         showToast('Prompt copied to clipboard')
         close()
         return
@@ -806,12 +887,41 @@ function boot(): void {
 
       const target = selectedPaneId
       mode = 'sending'
+
+      // Attaching a screenshot means the dev server captures real pixels of
+      // this window during the request below, so the popup must be out of
+      // the way and the hover outline must be the only overlay on screen -
+      // the in-flight box/chip started further down stay hidden until the
+      // capture (which finishes before the response) is done.
+      const wantsShot = screenshotAvailable && shotCheckbox.checked
+      let screenshot: ScreenshotRequest | undefined
+
+      if (wantsShot) {
+        popup.style.display = 'none'
+        if (outline.style.display !== 'block') drawOutlineAt(el)
+        await nextFrame()
+        await nextFrame()
+
+        const rect = el.getBoundingClientRect()
+        screenshot = {
+          rect: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
+          screenX: window.screenX,
+          screenY: window.screenY,
+          chromeLeft: (outerWidth - innerWidth) / 2,
+          chromeTop: outerHeight - innerHeight,
+          dpr: devicePixelRatio,
+        }
+      }
+
       const body: PromptRequest = {
         target,
         prompt,
-        element: pickedInfo,
+        element: info,
         ...(extrasInfo.length > 0 ? { extras: extrasInfo } : {}),
+        ...(screenshot !== undefined ? { screenshot } : {}),
       }
+
+      startInflight(target, findTitle(target), el, 'sending…', wantsShot)
 
       try {
         const res = await fetch(apiUrl('prompt'), {
@@ -820,27 +930,42 @@ function boot(): void {
           credentials: 'same-origin',
           body: JSON.stringify(body),
         })
+        revealInflight()
 
         if (res.status === 200) {
           const data = (await res.json()) as PromptResponse
           const sentPaneId = data.pane_id ?? target
-          const sentEl = pickedEl
-          showToast(`Sent to ${data.title ?? data.target}`)
+          const stillTracking = inflightPaneId === target
+          // A herdr:status push can now race ahead of this very response (it
+          // is forwarded before the response is even sent) and already have
+          // shown its own settle toast; showing "Sent to ..." on top of that
+          // would clobber a more specific, already-correct message.
+          if (!(stillTracking && inflightSettled)) showToast(`Sent to ${data.title ?? data.target}`)
           writeLast({ pane_id: target, session: findSession(target) })
           close()
-          if (sentEl !== null) startInflight(sentPaneId, data.title, sentEl)
+          // Only retarget when herdr resolved to a different pane than
+          // requested, and only if nothing has already cleared/settled the
+          // watch we started before the fetch - re-running startInflight
+          // unconditionally here would reset the box/chip and cancel the
+          // settle timer, stomping a blocked/idle event that arrived while
+          // the request was in flight.
+          if (sentPaneId !== target && stillTracking && !inflightSettled) startInflight(sentPaneId, data.title, el)
           return
         }
+
+        if (inflightPaneId === target) clearInflight()
 
         if (res.status === 409) {
           showToast('Agent is waiting at a dialog in herdr, answer it first', true)
           mode = 'popup'
+          popup.style.display = 'flex'
           return
         }
 
         if (res.status === 404) {
           showToast('Agent is gone', true)
           mode = 'popup'
+          popup.style.display = 'flex'
           pickToken += 1
           void loadAgents(pickToken)
           return
@@ -850,14 +975,17 @@ function boot(): void {
           const err = (await res.json()) as ErrorResponse
           showToast(err.message, true)
           mode = 'popup'
+          popup.style.display = 'flex'
           return
         }
 
-        await copyText(composePrompt(pickedInfo, prompt, { extras: extrasInfo }))
+        await copyText(composePrompt(info, prompt, { extras: extrasInfo }))
         showToast('herdr unreachable, prompt copied to clipboard', true)
         close()
       } catch {
-        await copyText(composePrompt(pickedInfo, prompt, { extras: extrasInfo }))
+        revealInflight()
+        if (inflightPaneId === target) clearInflight()
+        await copyText(composePrompt(info, prompt, { extras: extrasInfo }))
         showToast('herdr unreachable, prompt copied to clipboard', true)
         close()
       }
@@ -994,6 +1122,7 @@ function boot(): void {
       pick: (el, x, y) => pick(el, x, y),
       close: () => close(),
       inflight: () => inflightPaneId,
+      screenshotEnabled: () => shotCheckbox.checked,
       selection: () => selection.map((el) => selectorPath(el)),
     }
   }

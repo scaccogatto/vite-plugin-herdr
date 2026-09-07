@@ -75,7 +75,7 @@ export function renderAttachment(el: ElementInfo, extras: ElementInfo[] = []): s
 export function composePrompt(
   el: ElementInfo,
   prompt: string,
-  opts?: { attachmentPath?: string; extras?: ElementInfo[] },
+  opts?: { attachmentPath?: string; extras?: ElementInfo[]; screenshotPath?: string },
 ): string {
   const lines: string[] = []
 
@@ -116,6 +116,10 @@ export function composePrompt(
       const extraStyles = stylesLine(extra.styles)
       if (extraStyles !== null) lines.push(`Styles: ${extraStyles}`)
     })
+  }
+
+  if (opts?.screenshotPath) {
+    lines.push(`Screenshot: ${opts.screenshotPath} (real pixels, the picked element is outlined, 40px margin)`)
   }
 
   lines.push('---')

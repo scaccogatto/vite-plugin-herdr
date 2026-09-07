@@ -1,8 +1,10 @@
+import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { promisify } from 'node:util'
 import type { ViteDevServer } from 'vite'
 import { composePrompt, renderAttachment } from './compose.ts'
 import { HerdrError, httpStatus, request, resolveSocketPath, subscribe } from './herdr.ts'
@@ -13,11 +15,14 @@ import type {
   ElementInfo,
   PromptRequest,
   PromptResponse,
+  ScreenshotRequest,
   SpawnRequest,
   SpawnResponse,
   StateResponse,
   WorkspaceRow,
 } from './types.ts'
+
+const execFileAsync = promisify(execFile)
 
 /** Options for mounting the herdr routes on a Vite dev server */
 export interface ServerOptions {
@@ -25,6 +30,10 @@ export interface ServerOptions {
   socketPath: string | undefined
   inlineMaxChars: number
   attachmentDir?: string
+  /** Offers the screenshot checkbox; 'auto' (default) means macOS only */
+  screenshot?: boolean | 'auto'
+  /** Command used to capture the screenshot; defaults to 'screencapture' */
+  screenshotCommand?: string
 }
 
 /** Default directory for oversized element snippet attachments */
@@ -102,8 +111,56 @@ export function absolutizeHint(hint: string | null, roots: string[]): string | n
   return `${resolve(root, path)}:${line}${colPart}${rest}`
 }
 
+/** Resolves the plugin's `screenshot` option to whether the checkbox should be offered */
+export function screenshotAvailability(option: boolean | 'auto' | undefined, platform: string = process.platform): 'available' | 'unsupported' | 'off' {
+  if (option === false) return 'off'
+  if (option === true) return 'available'
+  return platform === 'darwin' ? 'available' : 'unsupported'
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n))
+}
+
+/** Crops the capture region around the picked element: real screen coordinates plus a margin */
+export function screenRegion(shot: ScreenshotRequest, margin = 40): { x: number; y: number; w: number; h: number } {
+  const x = Math.round(shot.screenX + shot.chromeLeft + shot.rect.x - margin)
+  const y = Math.round(shot.screenY + shot.chromeTop + shot.rect.y - margin)
+  const w = Math.round(shot.rect.w + 2 * margin)
+  const h = Math.round(shot.rect.h + 2 * margin)
+
+  return { x: Math.max(0, x), y: Math.max(0, y), w: clamp(w, 16, 4000), h: clamp(h, 16, 4000) }
+}
+
+/**
+ * Captures a real-pixel screenshot of a screen region to file, throwing
+ * HerdrError('screenshot_failed') when the command fails or produces no
+ * (or an empty) file
+ */
+export async function captureScreenshot(region: { x: number; y: number; w: number; h: number }, file: string, command: string): Promise<void> {
+  try {
+    await execFileAsync(command, ['-x', '-R', `${region.x},${region.y},${region.w},${region.h}`, file], { timeout: 8000 })
+  } catch (err) {
+    throw new HerdrError('screenshot_failed', err instanceof Error ? err.message : String(err))
+  }
+
+  let info: Awaited<ReturnType<typeof stat>>
+  try {
+    info = await stat(file)
+  } catch {
+    throw new HerdrError('screenshot_failed', 'capture produced no file')
+  }
+  if (info.size === 0) {
+    throw new HerdrError('screenshot_failed', 'capture produced an empty file')
+  }
+}
+
 /** Fetches the herdr session snapshot and maps it to the /state response shape */
-export async function getState(socketPath: string, env: NodeJS.ProcessEnv = process.env): Promise<StateResponse> {
+export async function getState(
+  socketPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+  screenshot: 'available' | 'unsupported' | 'off' = 'off',
+): Promise<StateResponse> {
   try {
     const top = obj(await request(socketPath, 'session.snapshot', {}))
     const snapshot = top ? obj(top.snapshot) : null
@@ -124,6 +181,7 @@ export async function getState(socketPath: string, env: NodeJS.ProcessEnv = proc
       paneId: env.HERDR_PANE_ID ?? null,
       workspaces: workspaces.map((w) => toWorkspaceRow(obj(w) ?? {})),
       agents: agents.map((a) => toAgentRow(obj(a) ?? {})),
+      screenshot,
     }
   } catch (err) {
     if (err instanceof HerdrError) {
@@ -142,8 +200,8 @@ export async function writeAttachment(content: string, dir: string): Promise<str
 }
 
 /**
- * Deletes attachment .md files older than maxAgeMs; ignores a missing
- * directory and per-file errors
+ * Deletes attachment .md and screenshot .png files older than maxAgeMs;
+ * ignores a missing directory and per-file errors
  */
 export async function cleanupAttachments(dir: string, maxAgeMs = 86400000): Promise<void> {
   let entries: string[]
@@ -156,7 +214,7 @@ export async function cleanupAttachments(dir: string, maxAgeMs = 86400000): Prom
   const now = Date.now()
   await Promise.all(
     entries
-      .filter((name) => name.endsWith('.md'))
+      .filter((name) => name.endsWith('.md') || name.endsWith('.png'))
       .map(async (name) => {
         const filePath = join(dir, name)
         try {
@@ -174,19 +232,41 @@ export async function cleanupAttachments(dir: string, maxAgeMs = 86400000): Prom
 /**
  * Composes the prompt for a validated request and sends it to herdr,
  * writing an attachment file when the rendered snippet is too large to inline
+ * and, when a screenshot was requested and enabled, capturing it first; a
+ * capture failure is logged and the prompt still goes out without it
  */
 export async function postPrompt(
   body: PromptRequest,
-  opts: { socketPath: string; inlineMaxChars: number; roots: string[]; attachmentDir: string },
+  opts: {
+    socketPath: string
+    inlineMaxChars: number
+    roots: string[]
+    attachmentDir: string
+    screenshotCommand: string
+    screenshotEnabled: boolean
+  },
 ): Promise<PromptResponse> {
   const el: ElementInfo = { ...body.element, hint: absolutizeHint(body.element.hint, opts.roots) }
   const extras: ElementInfo[] = (body.extras ?? []).map((extra) => ({ ...extra, hint: absolutizeHint(extra.hint, opts.roots) }))
+
+  let screenshotPath: string | undefined
+  if (body.screenshot && opts.screenshotEnabled) {
+    const file = join(opts.attachmentDir, `${Date.now()}-${randomBytes(3).toString('hex')}.png`)
+    try {
+      await mkdir(opts.attachmentDir, { recursive: true })
+      await captureScreenshot(screenRegion(body.screenshot), file, opts.screenshotCommand)
+      screenshotPath = file
+    } catch (err) {
+      console.warn(`[vite-plugin-herdr] screenshot failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   const attachment = renderAttachment(el, extras)
 
   const text =
     attachment.length > opts.inlineMaxChars
-      ? composePrompt(el, body.prompt, { attachmentPath: await writeAttachment(attachment, opts.attachmentDir) })
-      : composePrompt(el, body.prompt, { extras })
+      ? composePrompt(el, body.prompt, { attachmentPath: await writeAttachment(attachment, opts.attachmentDir), screenshotPath })
+      : composePrompt(el, body.prompt, { extras, screenshotPath })
 
   const result = obj(await request(opts.socketPath, 'agent.prompt', { target: body.target, text }))
   const agent = result ? obj(result.agent) : null
@@ -196,6 +276,7 @@ export async function postPrompt(
     target: body.target,
     title: agent ? str(agent.terminal_title_stripped) : null,
     pane_id: agent ? str(agent.pane_id) : null,
+    screenshot: screenshotPath ?? null,
   }
 }
 
@@ -385,6 +466,8 @@ export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
   const attachmentDir = opts.attachmentDir ?? ATTACHMENT_DIR
   const root = server.config.root
   const roots = [...new Set([root, process.cwd(), dirname(root)])]
+  const screenshotAvail = screenshotAvailability(opts.screenshot)
+  const screenshotCommand = opts.screenshotCommand ?? 'screencapture'
 
   cleanupAttachments(attachmentDir).catch(() => {})
 
@@ -402,7 +485,7 @@ export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
           sendJson(res, 405, { error: 'method_not_allowed', message: `${req.method} not allowed` })
           return
         }
-        sendJson(res, 200, await getState(socketPath))
+        sendJson(res, 200, await getState(socketPath, undefined, screenshotAvail))
         return
       }
 
@@ -416,7 +499,14 @@ export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
           sendJson(res, 400, { error: 'invalid_params', message: 'invalid prompt request' })
           return
         }
-        const result = await postPrompt(promptReq, { socketPath, inlineMaxChars: opts.inlineMaxChars, roots, attachmentDir })
+        const result = await postPrompt(promptReq, {
+          socketPath,
+          inlineMaxChars: opts.inlineMaxChars,
+          roots,
+          attachmentDir,
+          screenshotCommand,
+          screenshotEnabled: screenshotAvail === 'available',
+        })
         const paneId = result.pane_id ?? promptReq.target
         watchAgent((event) => server.ws.send('herdr:status', event), socketPath, paneId)
         sendJson(res, 200, result)

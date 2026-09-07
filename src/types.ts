@@ -57,8 +57,20 @@ export type StateResponse =
       paneId: string | null
       workspaces: WorkspaceRow[]
       agents: AgentRow[]
+      /** Whether the opt-in real-pixel screenshot can be attached to a prompt */
+      screenshot: 'available' | 'unsupported' | 'off'
     }
   | { herdr: false; reason: string; message: string }
+
+/** Screen-space capture parameters for an opt-in real-pixel screenshot of the picked element */
+export interface ScreenshotRequest {
+  rect: Rect
+  screenX: number
+  screenY: number
+  chromeLeft: number
+  chromeTop: number
+  dpr: number
+}
 
 /** Request body for POST /__herdr/prompt */
 export interface PromptRequest {
@@ -67,6 +79,8 @@ export interface PromptRequest {
   element: ElementInfo
   /** Up to 4 additional picked elements; the first selected element stays in `element` */
   extras?: ElementInfo[]
+  /** Present when the sender opted in to attaching a real-pixel screenshot */
+  screenshot?: ScreenshotRequest
 }
 
 /** Successful response from POST /__herdr/prompt */
@@ -75,6 +89,8 @@ export interface PromptResponse {
   target: string
   title: string | null
   pane_id: string | null
+  /** Absolute path to the captured screenshot, or null when none was captured */
+  screenshot: string | null
 }
 
 /** Request body for POST /__herdr/spawn */
