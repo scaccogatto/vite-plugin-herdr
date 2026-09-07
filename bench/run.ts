@@ -276,19 +276,24 @@ async function main(): Promise<void> {
         const tmp = await mkdtemp(join(tmpdir(), 'herdr-bench-run-'))
         try {
           await cp(demoRoot, tmp, { recursive: true, filter: (src) => !src.split(sep).includes('node_modules') })
+          // CLAUDE.md and the screenshot live inside the copy and are part of the
+          // base commit, so the agent can read them without leaving its cwd and
+          // they never show up as changed files.
+          await writeFile(join(tmp, 'CLAUDE.md'), CLAUDE_MD, 'utf8')
+          const shotSource =
+            variant === 'text' ? null : variant === 'text+shot' ? capture.shot : capture.shotOutline
+          let shotPath: string | null = null
+          if (shotSource !== null) {
+            await mkdir(join(tmp, '.herdr-bench'), { recursive: true })
+            shotPath = join(tmp, '.herdr-bench', 'picked-element.png')
+            await cp(resolve(args.out, shotSource), shotPath)
+          }
           execSync('git init -q', { cwd: tmp })
           execSync('git add -A', { cwd: tmp })
           execSync('git -c user.name=bench -c user.email=bench@example.com commit -q -m base', { cwd: tmp })
-          await writeFile(join(tmp, 'CLAUDE.md'), CLAUDE_MD, 'utf8')
 
           const element = { ...capture.element, hint: rewriteHint(capture.element.hint, demoRoot, tmp) }
-          const text = composePrompt(element, task.prompt)
-          const prompt =
-            variant === 'text'
-              ? text
-              : variant === 'text+shot'
-                ? withScreenshot(text, capture.shot === null ? null : resolve(args.out, capture.shot))
-                : withScreenshot(text, capture.shotOutline === null ? null : resolve(args.out, capture.shotOutline))
+          const prompt = withScreenshot(composePrompt(element, task.prompt), shotPath)
 
           if (args.dryRun) {
             if (rep === 1) {
