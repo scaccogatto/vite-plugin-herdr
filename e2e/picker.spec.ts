@@ -105,7 +105,9 @@ test.describe('picker with live agents', () => {
     const prompt = sent[0]!
     expect(prompt.target).toBe('w1:p2')
     expect(prompt.text).toContain('[vite-plugin-herdr] ')
-    expect(prompt.text).toMatch(/Focus: \/.*\/demo\/Bench\.vue:\d+:\d+ \(data-v-inspector\)/)
+    const focus = prompt.text.split('\n').find((l) => l.startsWith('Focus: '))
+    expect(focus).toMatch(/\/demo\/Bench\.vue:\d+:\d+ \(data-v-inspector\)$/)
+    expect(focus).not.toContain('/demo/demo/')
     expect(prompt.text).toContain('data-herdr-picked=""')
     expect(prompt.text).toContain('button#task-label')
     expect(prompt.text.split('---')[1]).toContain('Fix the typo')
@@ -114,10 +116,7 @@ test.describe('picker with live agents', () => {
     expect(last !== null && JSON.parse(last)).toEqual({ pane_id: 'w1:p2', session: 's1' })
   })
 
-  // Skipped: src/server.ts has no watchAgent (status watch) yet, so the real
-  // routes never open an events.subscribe connection after a send. Unskip
-  // once that lands.
-  test.skip('subscribes to status events for the sent-to agent after a send', async ({ page }) => {
+  test('subscribes to status events for the sent-to agent after a send', async ({ page }) => {
     await arm(page)
     await pickTask(page, 'label')
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')

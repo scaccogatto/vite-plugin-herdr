@@ -1,4 +1,5 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -47,6 +48,7 @@ describe('plugin wires the herdr routes', () => {
   let url: string
 
   beforeAll(async () => {
+    writeFileSync(join(fixtures, 'Bench.vue'), '<template/>')
     fake = await startFakeHerdr({
       'session.snapshot': () => snapshot,
       'agent.prompt': () => ({
@@ -70,6 +72,11 @@ describe('plugin wires the herdr routes', () => {
   afterAll(async () => {
     await server.close()
     await fake.close()
+    try {
+      await unlink(join(fixtures, 'Bench.vue'))
+    } catch {
+      // ignore if file doesn't exist
+    }
   })
 
   it('serves the agent list from the fake herdr', async () => {
@@ -88,11 +95,36 @@ describe('plugin wires the herdr routes', () => {
       body: JSON.stringify({ target: 'w1:p2', prompt: 'typo, should say Submit', element }),
     })
     expect(res.status).toBe(200)
-    const sent = fake.received.find((r) => r.method === 'agent.prompt')
+    const sent = fake.received.filter((r) => r.method === 'agent.prompt').at(-1)
     expect(sent?.params.target).toBe('w1:p2')
     const text = String(sent?.params.text)
     expect(text).toContain(`Focus: ${join(fixtures, 'Bench.vue')}:12:5 (data-v-inspector)`)
     expect(text.endsWith('---\ntypo, should say Submit')).toBe(true)
+  })
+
+  it('resolves relative hints against fixtures when the file exists there', async () => {
+    const res = await fetch(`${url}/__herdr/prompt`, {
+      method: 'POST',
+      headers: { origin: url, 'content-type': 'application/json' },
+      body: JSON.stringify({ target: 'w1:p2', prompt: 'test relative path', element: { ...element, hint: 'Bench.vue:12:5 (data-v-inspector)' } }),
+    })
+    expect(res.status).toBe(200)
+    const sent = fake.received.filter((r) => r.method === 'agent.prompt').at(-1)
+    const text = String(sent?.params.text)
+    expect(text).toContain(`Focus: ${join(fixtures, 'Bench.vue')}:12:5 (data-v-inspector)`)
+  })
+
+  it('resolves hints relative to parent of fixtures when prefixed with fixtures/', async () => {
+    const res = await fetch(`${url}/__herdr/prompt`, {
+      method: 'POST',
+      headers: { origin: url, 'content-type': 'application/json' },
+      body: JSON.stringify({ target: 'w1:p2', prompt: 'test parent path', element: { ...element, hint: 'fixtures/Bench.vue:12:5 (data-v-inspector)' } }),
+    })
+    expect(res.status).toBe(200)
+    const sent = fake.received.filter((r) => r.method === 'agent.prompt').at(-1)
+    const text = String(sent?.params.text)
+    expect(text).toContain(`Focus: ${join(fixtures, 'Bench.vue')}:12:5 (data-v-inspector)`)
+    expect(text).not.toContain('/fixtures/fixtures/')
   })
 
   it('rejects cross-origin callers', async () => {

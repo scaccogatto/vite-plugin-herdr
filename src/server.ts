@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { ViteDevServer } from 'vite'
 import { composePrompt, renderAttachment } from './compose.ts'
 import { HerdrError, httpStatus, request, resolveSocketPath, subscribe } from './herdr.ts'
@@ -77,10 +78,11 @@ export function toWorkspaceRow(w: Record<string, unknown>): WorkspaceRow {
 
 /**
  * Rewrites a relative source hint ("path:line[:col][suffix]") to an absolute
- * path resolved against root; hints that are already absolute, or don't
- * match the pattern, pass through unchanged
+ * path resolved against roots; for relative paths, tries each root in order
+ * and returns the first whose file exists, or falls back to the first root.
+ * Hints that are already absolute or don't match the pattern pass through unchanged.
  */
-export function absolutizeHint(hint: string | null, root: string): string | null {
+export function absolutizeHint(hint: string | null, roots: string[]): string | null {
   if (hint === null) return null
 
   const match = hint.match(/^(\S+?):(\d+)(?::(\d+))?(.*)$/)
@@ -92,6 +94,9 @@ export function absolutizeHint(hint: string | null, root: string): string | null
   const rest = match[4] ?? ''
   if (!path || !line) return hint
   if (isAbsolute(path)) return hint
+
+  const root = roots.find((r) => existsSync(resolve(r, path))) ?? roots[0]
+  if (root === undefined) return hint
 
   const colPart = col ? `:${col}` : ''
   return `${resolve(root, path)}:${line}${colPart}${rest}`
@@ -172,9 +177,9 @@ export async function cleanupAttachments(dir: string, maxAgeMs = 86400000): Prom
  */
 export async function postPrompt(
   body: PromptRequest,
-  opts: { socketPath: string; inlineMaxChars: number; root: string; attachmentDir: string },
+  opts: { socketPath: string; inlineMaxChars: number; roots: string[]; attachmentDir: string },
 ): Promise<PromptResponse> {
-  const el: ElementInfo = { ...body.element, hint: absolutizeHint(body.element.hint, opts.root) }
+  const el: ElementInfo = { ...body.element, hint: absolutizeHint(body.element.hint, opts.roots) }
   const attachment = renderAttachment(el)
 
   const text =
@@ -378,6 +383,7 @@ export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
   const socketPath = resolveSocketPath(opts.socketPath)
   const attachmentDir = opts.attachmentDir ?? ATTACHMENT_DIR
   const root = server.config.root
+  const roots = [...new Set([root, process.cwd(), dirname(root)])]
 
   cleanupAttachments(attachmentDir).catch(() => {})
 
@@ -409,7 +415,7 @@ export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
           sendJson(res, 400, { error: 'invalid_params', message: 'invalid prompt request' })
           return
         }
-        const result = await postPrompt(promptReq, { socketPath, inlineMaxChars: opts.inlineMaxChars, root, attachmentDir })
+        const result = await postPrompt(promptReq, { socketPath, inlineMaxChars: opts.inlineMaxChars, roots, attachmentDir })
         const paneId = result.pane_id ?? promptReq.target
         watchAgent((event) => server.ws.send('herdr:status', event), socketPath, paneId)
         sendJson(res, 200, result)

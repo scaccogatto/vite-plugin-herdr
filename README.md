@@ -71,6 +71,7 @@ herdr({
   socketPath: undefined, // $HERDR_SOCKET_PATH, then ~/.config/herdr/herdr.sock
   enabled: true,
   endpoint: '/__herdr',
+  appendTo: undefined, // regex for meta-framework injection
   snippet: { maxDepth: 3, maxLines: 60, inlineMaxChars: 1500 },
 })
 ```
@@ -81,6 +82,7 @@ herdr({
 | `socketPath` | `$HERDR_SOCKET_PATH`, else `~/.config/herdr/herdr.sock` | herdr's Unix socket |
 | `enabled` | `true` | Set `false` to disable without removing the plugin |
 | `endpoint` | `'/__herdr'` | Route prefix for the state/prompt endpoints, mounted under `server.config.base` |
+| `appendTo` | `undefined` | Append the client import to matching modules instead of injecting a script tag; needed by meta-frameworks |
 | `snippet.maxDepth` | `3` | Ancestor levels captured around the picked node |
 | `snippet.maxLines` | `60` | Max lines in the trimmed HTML snippet |
 | `snippet.inlineMaxChars` | `1500` | Snippet + styles cutoff before falling back to a file |
@@ -147,6 +149,16 @@ The client reads the first attribute it finds on the picked element, in this ord
 No attribute and no runtime fallback resolves it: `hint` is `null` and the agent works from the selector path, trimmed markup, and a `grep`. This is a normal outcome, not a failure, most locator plugins only run in dev builds you've opted into. React 19 removed `_debugSource`, so compile-time attribute injection is the only route to `file:line` on React; without one of the plugins above, React elements resolve to a component name at best.
 
 Hints captured relative to the Vite root are resolved to an absolute path against `server.config.root` before the prompt is composed, since the agent's working directory is the herdr pane's cwd, often a directory above the app root. In clipboard mode (no herdr) the root is unknown and the hint stays relative.
+
+## Meta-frameworks
+
+By default the plugin injects a `<script>` tag into the HTML. Some frameworks (Nuxt, SvelteKit, Astro) require the client to be imported into a module instead. Use the `appendTo` option to match module paths and import there:
+
+- **Nuxt**: `herdr({ appendTo: /\/entry\.m?js$/ })` in `nuxt.config`'s `vite.plugins`.
+- **SvelteKit**: `herdr({ appendTo: /vite\/dist\/client\/client\.mjs(?:\?|$)/ })` in `svelte.config.js`.
+- **Astro**: Use the integration's `injectScript` hook: `injectScript('page', "import 'virtual:vite-plugin-herdr/client'")`.
+
+For plain Vite SPA/MPA apps, `transformIndexHtml` injection (the default) is the standard route.
 
 ## Security
 
