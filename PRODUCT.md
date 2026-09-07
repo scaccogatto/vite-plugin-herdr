@@ -28,16 +28,17 @@ The only tool with a picker across live agent sessions. Neighbors are either clo
 
 ## Capabilities and Constraints
 
-- Public API: `import herdr from 'vite-plugin-herdr'`, used as `plugins: [vue(), herdr()]`; options `hotkey`, `socketPath`, `enabled`, `endpoint`, `snippet: { maxDepth, maxLines, inlineMaxChars }`
-- Two dev-server endpoints, same-origin only: `GET {endpoint}/state` (herdr reachability, workspaces, agents), `POST {endpoint}/prompt` (send to a chosen agent)
-- Zero runtime dependencies: Node stdlib only (`net`, `fs`, `os`, `path`, `crypto`) on the server side, no framework on the client (vanilla DOM in a shadow-DOM host)
-- Text-first payload always; a real-pixel screenshot is gated behind a pre-registered benchmark (`docs/payload.md`), not shipped speculatively; no DOM-to-canvas re-render, ever
-- Confirmed Won't (for now): fake/re-rendered screenshots, a fixed localhost port as transport, a Chrome extension for pages you serve yourself (that's the extension's job for pages you *don't* serve)
-- Not yet implemented (roadmap, see README): opt-in real screenshots in the product itself, an in-flight outline that persists until the agent goes idle/done, multi-select with one shared comment, starting a new agent (or a new worktree) from the popup, Nuxt/meta-framework injection, a Chrome extension for unserved pages
+- Public API: `import herdr from 'vite-plugin-herdr'`, used as `plugins: [vue(), herdr()]`; options `hotkey`, `socketPath`, `enabled`, `endpoint`, `snippet: { maxDepth, maxLines, inlineMaxChars }`, `appendTo` (meta-frameworks), `screenshot` (`'auto'`, macOS only) and the advanced `screenshotCommand`
+- Three dev-server endpoints, same-origin only: `GET {endpoint}/state` (herdr reachability, workspaces, agents, screenshot availability), `POST {endpoint}/prompt` (send to a chosen agent, starts a status watch), `POST {endpoint}/spawn` (new agent in a split pane or a fresh worktree)
+- Zero runtime dependencies: Node stdlib only (`net`, `fs`, `os`, `path`, `crypto`, `child_process`) on the server side, no framework on the client (vanilla DOM in a shadow-DOM host)
+- Text-first payload always; the real-pixel screenshot is opt-in and ships only because the pre-registered benchmark promoted the outlined variant (`docs/payload.md`); no DOM-to-canvas re-render, ever
+- Shipped in 0.1.0: in-flight outline until the agent settles, multi-select with one shared comment (up to five elements), spawn a new agent from the popup, `appendTo` injection for Nuxt and SvelteKit, opt-in outlined screenshot on macOS
+- Confirmed Won't (for now): fake or re-rendered screenshots, a fixed localhost port as transport, a Chrome extension for pages you serve yourself (that is the extension's job for pages you do not serve)
+- Roadmap: a Chrome extension for pages the dev server does not serve; Astro and other meta-framework recipes beyond `appendTo`
 
 ## Brand Commitments
 
-Name `vite-plugin-herdr` (follows the `vite-plugin-*` npm naming convention; `herdr` names the agent-orchestration layer it bridges to). Logo: a wordmark placeholder in `#1e1e2e` with a `#cba6f7` accent square, consistent with the Catppuccin palette used across the author's other tools. MIT license.
+Name `vite-plugin-herdr` (follows the `vite-plugin-*` npm naming convention; `herdr` names the agent-orchestration layer it bridges to). Logo: a crosshair-over-element mark with the wordmark, `#1e1e2e` ground and `#cba6f7` accent, consistent with the Catppuccin palette used across the author's other tools (`.github/logo.svg`, `.github/icon.svg`). MIT license.
 
 ## Evidence on Hand
 
