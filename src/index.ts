@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
+import { mountRoutes } from './server.ts'
 
 /// Options for the vite-plugin-herdr plugin
 export interface Options {
@@ -80,6 +81,14 @@ export default function herdr(options: Options = {}): Plugin {
       }
 
       return undefined
+    },
+
+    configureServer(server) {
+      mountRoutes(server, {
+        endpoint: resolved.endpoint,
+        socketPath: resolved.socketPath,
+        inlineMaxChars: resolved.snippet.inlineMaxChars,
+      })
     },
 
     transformIndexHtml: {
