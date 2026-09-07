@@ -432,7 +432,9 @@ export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
           sendJson(res, 400, { error: 'invalid_params', message: 'invalid spawn request' })
           return
         }
-        sendJson(res, 200, await spawnAgent(spawnReq, { socketPath, root }))
+        // A new agent belongs in the project directory the dev server was started
+        // from, not in the Vite root (which may be a sub-folder like demo/).
+        sendJson(res, 200, await spawnAgent(spawnReq, { socketPath, root: process.cwd() }))
         return
       }
 
