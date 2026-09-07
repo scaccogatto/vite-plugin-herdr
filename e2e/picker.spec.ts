@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { assertExplicitSocketPath, startDemo, type DemoServer } from './helpers/servers.ts'
+import { assertExplicitSocketPath, startDemo, waitForPreselectedAgent, type DemoServer } from './helpers/servers.ts'
 import { bothIdleSnapshot, liveSnapshot } from './helpers/fixtures.ts'
 
 // Safety net: this suite drives the real /__herdr/* routes (the herdr()
@@ -94,6 +94,7 @@ test.describe('picker with live agents', () => {
     await arm(page)
     await pickTask(page, 'label')
 
+    await waitForPreselectedAgent(page)
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
     await page.keyboard.press('Enter')
 
@@ -119,6 +120,7 @@ test.describe('picker with live agents', () => {
   test('subscribes to status events for the sent-to agent after a send', async ({ page }) => {
     await arm(page)
     await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
     await page.keyboard.press('Enter')
 
@@ -168,6 +170,7 @@ test.describe('picker with a blocked agent', () => {
 
     await arm(page)
     await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
     await page.keyboard.press('Enter')
 

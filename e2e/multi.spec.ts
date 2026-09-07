@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { test, expect, type Page } from '@playwright/test'
-import { startDemo, type DemoServer } from './helpers/servers.ts'
+import { startDemo, waitForPreselectedAgent, type DemoServer } from './helpers/servers.ts'
 import { liveSnapshot } from './helpers/fixtures.ts'
 
 // The real demo markup (Vue's data-v-inspector + data-v-* attrs on every
@@ -78,6 +78,7 @@ test.describe('multi-select with live agents', () => {
     await expect(dialog).toBeVisible()
     await expect(dialog).toContainText('3 elements')
 
+    await waitForPreselectedAgent(page)
     await page.locator('[data-herdr-host] textarea').fill('Fix these together')
     await page.keyboard.press('Enter')
 

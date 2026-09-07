@@ -10,6 +10,7 @@
 | End-to-end | **Playwright** | Real dev server, real herdr fake on a temp socket, real browser interaction |
 | Client UI | **Vanilla DOM in a shadow DOM host** | No framework: the plugin must inject into any Vite app regardless of what that app uses |
 | Socket transport | **Node stdlib `net`** | One connection per request to herdr's Unix socket, no client library exists or is needed |
+| Screenshot capture | **macOS `screencapture` via `child_process`** | Opt-in real-pixel capture of the picked element, fired from the dev server; no library, no canvas re-render |
 | CI/CD | **GitHub Actions** | Lint, typecheck, coverage, build, demo build, Playwright e2e; release on tag |
 
 ## Why a Vite plugin
@@ -20,6 +21,7 @@ Versus a Chrome extension:
 - **No new port.** The dev server already listens; adding a fixed localhost port is a second thing to configure, firewall, and secure.
 - **The dev server already knows its workspace.** Running inside a herdr pane, it inherits `HERDR_WORKSPACE_ID` and `HERDR_PANE_ID` for free, an extension would have to ask.
 - **Source hints for free.** Dev-mode locator plugins (vite-plugin-vue-inspector, code-inspector-plugin, agent-source-locator) already inject `file:line:col` attributes into the DOM Vite serves; an extension sees only the rendered page, with no compile-time information.
+- **The bridge is also the screenshot rig.** The dev server process is the one already positioned to shell out to `screencapture`; the pre-registered payload benchmark ([docs/payload.md](payload.md)) found the outlined screenshot worth shipping (+20 points visual success, 23% fewer turns), and a Vite plugin needed zero new infrastructure to fire it.
 
 The extension stays the right answer for pages you don't serve yourself: production sites, third-party apps, anything not running through your own Vite dev server. That's parked, not rejected, see [Roadmap](../README.md#roadmap).
 
