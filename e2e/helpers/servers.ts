@@ -23,6 +23,8 @@ export interface StartDemoOptions {
   promptError?: { code: string; message: string } | null
   /** Env vars set on process.env for the lifetime of the server (getState reads these at request time) */
   env?: Record<string, string>
+  /** Additional fake herdr method handlers, merged over (and able to override) the defaults */
+  handlers?: Record<string, (params: Record<string, unknown>) => unknown>
 }
 
 export interface DemoServer {
@@ -61,6 +63,7 @@ export async function startDemo(opts: StartDemoOptions): Promise<DemoServer> {
             opts.promptError
               ? { __error: opts.promptError }
               : { type: 'agent_prompted', agent: { pane_id: params.target, terminal_title_stripped: 'Fake agent' } },
+          ...opts.handlers,
         })
       : null
 

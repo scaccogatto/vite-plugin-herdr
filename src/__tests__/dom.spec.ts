@@ -130,6 +130,36 @@ describe('sourceHint', () => {
     expect(sourceHint(child)).toBe('bar.js:5 (data-loc, ancestor)')
   })
 
+  it('reads data-v-inspector off the vnode props when cleanHtml stripped the attribute', () => {
+    const div = document.createElement('div')
+    document.body.appendChild(div)
+    ;(div as unknown as Record<string, unknown>).__vnode = {
+      props: { __v_inspector: 'src/Foo.vue:3:2' },
+    }
+    expect(sourceHint(div)).toBe('src/Foo.vue:3:2 (data-v-inspector)')
+  })
+
+  it('adds an ancestor suffix when the vnode prop is found higher up', () => {
+    const parent = document.createElement('div')
+    const child = document.createElement('span')
+    parent.appendChild(child)
+    document.body.appendChild(parent)
+    ;(parent as unknown as Record<string, unknown>).__vnode = {
+      props: { __v_inspector: 'src/Bar.vue:9:1' },
+    }
+    expect(sourceHint(child)).toBe('src/Bar.vue:9:1 (data-v-inspector, ancestor)')
+  })
+
+  it('prefers the data-v-inspector attribute over the vnode prop when both are present', () => {
+    const div = document.createElement('div')
+    div.setAttribute('data-v-inspector', 'attr.vue:1:1')
+    document.body.appendChild(div)
+    ;(div as unknown as Record<string, unknown>).__vnode = {
+      props: { __v_inspector: 'vnode.vue:2:2' },
+    }
+    expect(sourceHint(div)).toBe('attr.vue:1:1 (data-v-inspector)')
+  })
+
   it('falls back to the Vue runtime component when no attribute is present', () => {
     const div = document.createElement('div')
     document.body.appendChild(div)
