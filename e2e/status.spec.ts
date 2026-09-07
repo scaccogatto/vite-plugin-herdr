@@ -62,7 +62,7 @@ test.describe('in-flight outline', () => {
     await page.goto(`${demo.url}#bench`)
   })
 
-  test('clears on idle with a finished toast', async ({ page }) => {
+  test('shows DONE on the element when the agent goes idle, then clears', async ({ page }) => {
     const beforeSubscribe = subscribeCount(demo)
     await arm(page)
     await pickTask(page, 'label')
@@ -82,7 +82,11 @@ test.describe('in-flight outline', () => {
       data: { pane_id: 'w1:p2', workspace_id: 'w1', agent_status: 'idle', title: 'Settings polish' },
     })
 
-    await expect(page.locator('[data-herdr-host] .toast')).toContainText('finished', { timeout: 5000 })
+    // The DONE chip sits on the element itself (the toast alone was easy to
+    // miss), and stays a few seconds before the toast takes over.
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toContainText('DONE')
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toHaveClass(/done/)
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('DONE', { timeout: 5000 })
     await expect(page.locator('[data-herdr-host] .inflight')).toBeHidden()
     expect(await page.evaluate(() => window.__herdr?.inflight())).toBeNull()
   })
