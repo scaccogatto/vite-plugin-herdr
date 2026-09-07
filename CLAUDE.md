@@ -4,13 +4,18 @@ Vite dev-only plugin: injects a DOM element picker into the served page and send
 
 ## Commands
 
-- `npm run build`: Build the plugin and client modules
+- `npm run build`: Build the plugin and client modules (two modes: Node, then Client)
 - `npm run typecheck`: Run TypeScript strict checks
 - `npm run coverage`: Run tests with coverage
 - `npm run lint`: Check code style with ESLint
 - `npm run dev-demo`: Start the demo app in dev mode
 - `npm run build-demo`: Build the demo app
 - `npm run e2e`: Run Playwright end-to-end tests
+
+## Development conventions
+
+- **TypeScript imports**: All `.ts` files import from other `.ts` files with the `.ts` extension (e.g., `import { x } from './types.ts'`). This is enabled by `tsconfig.json` `allowImportingTsExtensions: true` and works in Vite because it transforms imports at dev time. Built output (`dist/index.js`) and published package (`dist/client.js`) ship built `.js` files that don't need extension paths.
+- **Worktrees and commits**: For any task modifying code, use a git worktree (via EnterWorktree/ExitWorktree). Commit changes on your branch, then merge into main. Never commit generated `dist/` files; they are rebuilt on each build and added to `.gitignore`.
 
 ## Open Knowledge Format (OKF)
 

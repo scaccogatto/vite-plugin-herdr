@@ -6,7 +6,7 @@ tags: [herdr, protocol, socket, ndjson, environment]
 generated:
   by: claude/fable-5
   at: 2026-09-07
-status: draft
+status: stable
 sources:
   - resource: ../docs/flows.md
   - resource: ../docs/stack.md
