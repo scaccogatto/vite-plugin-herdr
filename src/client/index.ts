@@ -107,6 +107,8 @@ const STYLE = `
 .multi-badge { position: absolute; top: -8px; left: -8px; width: 16px; height: 16px; border-radius: 50%; background: #cba6f7; color: #1e1e2e; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .inflight { position: fixed; display: none; border: 2px dashed #f9e2af; background: rgba(249, 226, 175, 0.12); pointer-events: none; transition: border-color 0.2s, background-color 0.2s; }
 .inflight-chip { position: fixed; display: none; background: #1e1e2e; color: #f9e2af; border: 1px solid #45475a; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.inflight.done { border-style: solid; background: rgba(166, 227, 161, 0.12); }
+.inflight-chip.done { color: #a6e3a1; border-color: #a6e3a1; font-weight: 700; }
 .popup { position: fixed; display: none; flex-direction: column; width: 380px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: auto; }
 .popup-header { padding: 10px 12px 6px; border-bottom: 1px solid #45475a; }
 .popup-count { display: none; color: #a6adc8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
@@ -422,7 +424,9 @@ function boot(): void {
       inflightSettled = false
       inflightBox.style.display = 'none'
       inflightBox.style.borderColor = ''
+      inflightBox.classList.remove('done')
       inflightChip.style.display = 'none'
+      inflightChip.classList.remove('done')
       if (inflightSettleTimer !== undefined) {
         clearTimeout(inflightSettleTimer)
         inflightSettleTimer = undefined
@@ -430,17 +434,22 @@ function boot(): void {
       stopInflightPoll()
     }
 
+    // DONE stays on the element itself for a few seconds: the toast alone in
+    // the corner was easy to miss while looking at the page.
     function settleInflightFinished(): void {
       inflightSettled = true
       const label = inflightLabel()
       inflightBox.style.borderColor = '#a6e3a1'
-      inflightChip.style.display = 'none'
+      inflightBox.classList.add('done')
+      inflightChip.textContent = `✓ DONE · ${label}`
+      inflightChip.classList.add('done')
+      positionInflight()
       stopInflightPoll()
       if (inflightSettleTimer !== undefined) clearTimeout(inflightSettleTimer)
       inflightSettleTimer = setTimeout(() => {
-        showToast(`${label} finished`)
+        showToast(`✓ DONE · ${label}`)
         clearInflight()
-      }, 1200)
+      }, 3000)
     }
 
     function settleInflightBlocked(): void {
