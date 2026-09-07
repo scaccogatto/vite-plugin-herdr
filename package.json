@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-herdr",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pick a DOM element in your Vite app and send it, with a prompt, to a coding agent running in herdr.",
   "type": "module",
   "author": {
