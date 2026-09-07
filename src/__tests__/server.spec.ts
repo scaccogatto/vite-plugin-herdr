@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { readdir, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -82,21 +82,51 @@ describe('toWorkspaceRow', () => {
 
 describe('absolutizeHint', () => {
   it('absolutizes a relative hint with line:col plus suffix', () => {
-    expect(absolutizeHint('src/components/Button.tsx:42:10 (extra)', '/repo')).toBe(
+    expect(absolutizeHint('src/components/Button.tsx:42:10 (extra)', ['/repo'])).toBe(
       '/repo/src/components/Button.tsx:42:10 (extra)',
     )
   })
 
   it('leaves an absolute path hint unchanged', () => {
-    expect(absolutizeHint('/repo/src/Button.tsx:42:10', '/repo')).toBe('/repo/src/Button.tsx:42:10')
+    expect(absolutizeHint('/repo/src/Button.tsx:42:10', ['/repo'])).toBe('/repo/src/Button.tsx:42:10')
   })
 
   it('leaves a non-matching hint unchanged', () => {
-    expect(absolutizeHint('react component X, no file', '/repo')).toBe('react component X, no file')
+    expect(absolutizeHint('react component X, no file', ['/repo'])).toBe('react component X, no file')
   })
 
   it('returns null for a null hint', () => {
-    expect(absolutizeHint(null, '/repo')).toBeNull()
+    expect(absolutizeHint(null, ['/repo'])).toBeNull()
+  })
+
+  it('tries each root in order for relative paths', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'vph-test-'))
+    mkdirSync(join(tmp, 'demo'))
+    writeFileSync(join(tmp, 'demo', 'Bench.vue'), '')
+
+    expect(absolutizeHint('demo/Bench.vue:11:7 (data-v-inspector)', [join(tmp, 'demo'), tmp])).toBe(
+      `${join(tmp, 'demo', 'Bench.vue')}:11:7 (data-v-inspector)`,
+    )
+  })
+
+  it('falls back to the first root when no file exists', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'vph-test-'))
+    mkdirSync(join(tmp, 'demo'))
+
+    expect(absolutizeHint('nope/X.vue:3:4', [join(tmp, 'demo'), tmp])).toBe(
+      `${join(tmp, 'demo', 'nope', 'X.vue')}:3:4`,
+    )
+  })
+
+  it('finds a file in the second root when it does not exist in the first', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'vph-test-'))
+    mkdirSync(join(tmp, 'a'))
+    mkdirSync(join(tmp, 'b'))
+    writeFileSync(join(tmp, 'b', 'file.ts'), '')
+
+    expect(absolutizeHint('file.ts:1:1', [join(tmp, 'a'), join(tmp, 'b')])).toBe(
+      `${join(tmp, 'b', 'file.ts')}:1:1`,
+    )
   })
 })
 
@@ -180,7 +210,7 @@ describe('postPrompt', () => {
 
     const result = await postPrompt(
       { target: 'w1:p1', prompt: 'make it red', element },
-      { socketPath: fake.socketPath, inlineMaxChars: 100000, root: '/repo', attachmentDir },
+      { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir },
     )
 
     expect(result).toEqual({ ok: true, target: 'w1:p1', title: 'my agent', pane_id: null })
@@ -206,7 +236,7 @@ describe('postPrompt', () => {
 
     const result = await postPrompt(
       { target: 'agent-name', prompt: 'make it red', element },
-      { socketPath: fake.socketPath, inlineMaxChars: 100000, root: '/repo', attachmentDir },
+      { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir },
     )
 
     expect(result).toEqual({ ok: true, target: 'agent-name', title: 'my agent', pane_id: 'w1:p9' })
@@ -220,7 +250,7 @@ describe('postPrompt', () => {
 
     const result = await postPrompt(
       { target: 'w1:p1', prompt: 'make it red', element },
-      { socketPath: fake.socketPath, inlineMaxChars: 5, root: '/repo', attachmentDir },
+      { socketPath: fake.socketPath, inlineMaxChars: 5, roots: ['/repo'], attachmentDir },
     )
 
     expect(result.ok).toBe(true)

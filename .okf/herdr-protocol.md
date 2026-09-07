@@ -21,8 +21,10 @@ sources:
 **Methods used by this plugin**:
 - `session.snapshot {}` → workspaces, agents (`AgentInfo`), panes, tabs, layouts, focused ids, `version`, `protocol`. This is the one call `GET /state` needs.
 - `agent.prompt {target, text, wait?}` → `{ type: 'agent_prompted', agent }`. Multi-line `text` is sent as bracketed paste plus `Enter`. Rejects with `agent_blocked` if the target agent is waiting at a dialog; a `working` agent accepts and queues the input (Claude Code does this).
-
-**Methods reserved for v2** (not called by v0/v1): `events.subscribe {subscriptions:[{type:'pane.agent_status_changed', pane_id}]}` (pane_id required per subscription, no unsubscribe, close the socket to stop), `pane.split`, `agent.start {name, kind, pane_id, args?, timeout_ms?}` (pane must be an idle shell), `worktree.create {cwd?, branch?, base?, path?, label?, workspace_id?, focus?}` → `{workspace, tab, root_pane, worktree}`.
+- `events.subscribe {subscriptions:[{type:'pane.agent_status_changed', pane_id}]}` (pane_id required per subscription, no unsubscribe, close the socket to stop). Used to watch agent status after a prompt.
+- `pane.split {direction, target_pane_id, cwd?, focus?}` → `{pane}`. Used to create a sibling pane for mode "here" spawn.
+- `agent.start {name, kind, pane_id, args?, timeout_ms?}` → `{agent}`. Starts an agent in an idle pane. Pane must be an idle shell.
+- `worktree.create {cwd?, branch?, base?, path?, label?, workspace_id?, focus?}` → `{workspace, tab, root_pane, worktree}`. Used for mode "worktree" spawn.
 
 **Error codes observed**: `agent_blocked`, `agent_prompt_stalled`, `not_found`, `invalid_params`, `busy`, `agent_not_ready`.
 

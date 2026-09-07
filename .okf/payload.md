@@ -50,7 +50,7 @@ Details: /tmp/vite-plugin-herdr/1726000000000-abc123.md
 <user's prompt text>
 ````
 
-**Focus** line: source file:line or 'none, find by selector'. `absolutizeHint(hint, root)` in `src/server.ts` resolves relative paths to absolute against `server.config.root` by matching the pattern `(\S+?):(\d+)(?::(\d+))?(.*)` and leaving already-absolute paths unchanged.
+**Focus** line: source file:line or 'none, find by selector'. `absolutizeHint(hint, roots)` in `src/server.ts` resolves relative paths to absolute by matching the pattern `(\S+?):(\d+)(?::(\d+))?(.*)`, trying candidate roots in order (Vite root, process cwd, parent of Vite root) and returning the first whose file exists; falls back to the first root if no file exists. Already-absolute paths pass through unchanged.
 
 ### Image Decision (v1+)
 

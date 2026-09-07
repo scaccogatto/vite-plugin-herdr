@@ -40,6 +40,19 @@ Page/Client        Dev server           herdr socket        Agent pane
     │ toast, close popup │                     │                  │
 ```
 
+## Status watch flow
+
+After the send returns (step 12 above), the server opens a new persistent connection and subscribes to `pane.agent_status_changed` events for the prompted pane via `events.subscribe`. The subscription pushes event lines while the agent works (e.g. `status: working`, then `status: idle` or `done`), and the server forwards these to the client over the HMR websocket as `herdr:status` messages. The client does not currently act on these, but the watch closes automatically when the agent enters a settled status (idle, done, or blocked) or after 30 minutes.
+
+## Spawn flow
+
+When the user clicks "Spawn a new agent" in a future UI or calls the `POST {endpoint}/spawn` endpoint directly:
+
+1. Client sends `{ mode: 'here' | 'worktree', name?, branch? }` as JSON to the spawn endpoint.
+2. **Mode "here"** requires `HERDR_PANE_ID` set on the dev server process. The server calls `pane.split {direction: 'right', target_pane_id: HERDR_PANE_ID, cwd: root}` to create a sibling pane, then `agent.start {name, kind: 'claude', pane_id: newPaneId}` to start a claude agent in that pane, with a 70-second timeout.
+3. **Mode "worktree"** calls `worktree.create {workspace_id: HERDR_WORKSPACE_ID, branch?, focus: false}` to create a new workspace/pane pair, then `agent.start` in its root pane.
+4. The server returns `{ ok: true, pane_id, name, workspace_id }` to the client.
+
 ## Clipboard fallback
 
 13. Before opening the popup, the client already has the result of `GET {endpoint}/state`. If the response is `{ herdr: false, reason, message }` (no socket reachable, or protocol below 20), the popup shows no agent list, only the textarea.

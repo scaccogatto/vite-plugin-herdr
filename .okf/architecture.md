@@ -19,7 +19,7 @@ Eight modules organize the plugin: four on Node (server), three on DOM (client),
 | File | Responsibility |
 |---|---|
 | `src/index.ts` | Plugin entry: `resolveOptions`, `VIRTUAL_ID` constant, `resolveId` mapping virtual to real client, `transformIndexHtml` injection of client `<script>`, `configureServer` mounting the two routes |
-| `src/server.ts` | Socket bridge: `mountRoutes`, `getState`, `toAgentRow`, `toWorkspaceRow`, `absolutizeHint`, `postPrompt`, `writeAttachment`, `cleanupAttachments` (24-hour file expiry) |
+| `src/server.ts` | Socket bridge: `mountRoutes`, `getState`, `toAgentRow`, `toWorkspaceRow`, `absolutizeHint`, `postPrompt`, `validateSpawn`, `spawnAgent`, `watchAgent`, `writeAttachment`, `cleanupAttachments` (24-hour file expiry) |
 | `src/herdr.ts` | Socket client: `request(socketPath, method, params, timeoutMs)` (one connection per request), `subscribe`, `parseLine`, `HerdrError { code }`, `httpStatus(code)`, `resolveSocketPath` |
 | `src/http.ts` | Guards and I/O: `isSameOrigin(headers)` same-origin check, `readJson(req, maxBytes)` with 256 KB cap, `validatePrompt(body)` 20000-char cap, `sendJson` response writer |
 | `src/compose.ts` | Pure shared: `renderAttachment(el)` markdown serializer, `composePrompt(el, prompt, { attachmentPath? })` ASCII prompt builder |
@@ -58,5 +58,6 @@ Server endpoints:
 |-------|--------|---------|----------|
 | `{base}/__herdr/state` | GET | none | 200: `StateResponse`; 403: cross-origin; 502: socket missing |
 | `{base}/__herdr/prompt` | POST | JSON max 256KB | 200: `PromptResponse`; 400/409/413: error; 502/503: server errors |
+| `{base}/__herdr/spawn` | POST | JSON max 64KB | 200: `SpawnResponse`; 400/409/413: error; 502/503: server errors |
 
 Client does not read `import.meta.env`; it parses hotkey and endpoint from query string injected at `transformIndexHtml`.
