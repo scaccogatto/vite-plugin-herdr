@@ -1,28 +1,59 @@
-# Benchmark Tasks
+# Payload benchmark
 
-This folder holds the benchmark suite for measuring agent success on UI defect detection and repair.
+Measures whether attaching a real screenshot (and, further, a screenshot with the picker's
+outline drawn on it) to the prompt helps a coding agent fix UI defects, versus text alone. The
+pre-registered protocol and the decision rule live in [`docs/payload.md`](../docs/payload.md);
+this folder is the harness that produces the numbers it's read off.
 
-## tasks.json Format
+## Prerequisites
 
-`tasks.json` contains an array of benchmark task objects. Each task has:
+- `npx playwright install chromium` (this repo's Playwright config only needs Chromium)
+- `claude` CLI installed and logged in (`claude -p` must work headless)
 
-- `id`: Unique identifier for the task (used in results).
-- `kind`: Either `"edit"` (text/code changes) or `"visual"` (appearance/styling fixes).
-- `selector`: CSS selector for the DOM element to target.
-- `prompt`: Natural language prompt a developer would send to an agent for repair.
-- `expectFile`: The source file being modified (usually `Bench.vue`).
-- `expectContains`: For edit tasks, a substring expected in the fixed code; `null` for visual tasks.
-- `rubric`: For visual tasks, a one-sentence description of what a correct fix looks like.
+## Running it
 
-## Execution
+Pick a run id, conventionally `bench/results/<YYYYMMDD-HHMM>`:
 
-Capture and run scripts (not yet included) will:
-1. Serve the demo app with `npm run dev-demo`.
-2. For each task, capture the element and surrounding context.
-3. Send a prompt to an agent via CLI (e.g., `claude -p "<prompt>"`).
-4. Verify the fix by checking code changes or visual inspection (depending on task kind).
-5. Record metrics: number of turns, duration, cost, success/failure.
+```sh
+node bench/capture.ts --out bench/results/20260907-1200
+node bench/run.ts --out bench/results/20260907-1200
+```
 
-## Results
+`capture.ts` starts the demo dev server, drives headless Chromium through the ten tasks in
+`bench/tasks.json`, and writes `captures.json` plus a `<taskId>-shot.png` /
+`<taskId>-shot-outline.png` pair per task into the run directory.
 
-Test results are saved to `bench/results/` as JSON files keyed by date and variant (text, text+shot, text+shot+outline).
+`run.ts` then runs, for every (task, variant, repetition), a headless `claude -p` session against
+a fresh temp copy of `demo/`, checks the result, and appends one line to `runs.jsonl`. At the end
+it writes `summary.json` and `summary.md` and prints the markdown table.
+
+### Options
+
+```
+node bench/run.ts --out <dir> [--variants text,text+shot,text+shot+outline] [--reps 1]
+  [--tasks label,link] [--model sonnet] [--max-turns 30] [--dry-run] [--report-only]
+```
+
+- `--variants` / `--tasks`: comma-separated subsets, useful for a smoke run before committing to
+  the full 90-run sweep.
+- `--dry-run`: builds and prints the composed prompt for the first repetition of each task/variant
+  without spawning `claude` or touching `runs.jsonl` - use this to sanity-check the prompt.
+- `--report-only`: skips execution and just re-summarizes whatever is already in `runs.jsonl`.
+
+## Resumability
+
+`run.ts` skips any (task, variant, rep) combination already present in `<out>/runs.jsonl`. A
+killed or interrupted run resumes cleanly by re-running the same command.
+
+## Cost
+
+Each (task, variant, rep) is one headless Claude session (two for visual tasks, since a second
+`claude -p` call acts as judge). At an estimated $0.15-$0.40 per session, the full 10-task x
+3-variant x 3-rep sweep (90 runs) costs roughly $15-$40; run `--reps 1` first to confirm the
+estimate before committing to the full sweep.
+
+## The decision
+
+The screenshot/outline decision rule is pre-registered in `docs/payload.md` and is not re-derived
+here. Once a run's `summary.md` looks final, paste it into that file's Results section - that's
+the artifact the decision is read off.

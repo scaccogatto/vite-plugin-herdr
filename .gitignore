@@ -7,3 +7,5 @@ playwright-report
 .DS_Store
 .claude/worktrees
 *.tgz
+bench/results/*
+!bench/results/.gitkeep
