@@ -7,7 +7,7 @@
 3. If the hit lands inside an `<svg>`, the client walks up to the `<svg>` element itself rather than the inner shape.
 4. The plugin's own shadow-DOM host is excluded from hit-testing, you can never pick the picker.
 5. On click, the client freezes the current target, resolves `sourceHint`, `selectorPath`, a trimmed HTML snippet with the picked node marked `data-herdr-picked`, a computed-style summary, and the bounding rect.
-6. The popup opens: a textarea (autofocus), and the agent list fetched from `GET {endpoint}/state`, grouped by workspace, agents sorted by workspace `number`. The list starts collapsed behind a To field showing the preselected target (name, status, branch, pane); `Down` (or a click on the To field) expands it.
+6. The popup opens: a textarea (autofocus), and the agent list fetched from `GET {endpoint}/state`, grouped by workspace, agents sorted by workspace `number`. The list starts collapsed behind a To field showing the preselected target (name, status, branch, pane); Up or Down (or a click on the To field) expands it.
 
 ## Multi-select flow
 

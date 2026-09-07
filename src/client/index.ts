@@ -38,7 +38,7 @@ export interface HerdrApi {
   inflight(): string | null
   /** Selector paths of the elements added to the multi-selection via shift+click */
   selection(): string[]
-  /** Whether the attach-screenshot checkbox is currently checked */
+  /** Whether the attach-screenshot switch is currently checked */
   screenshotEnabled(): boolean
 }
 
@@ -174,8 +174,7 @@ const STYLE = `
   --tint: rgba(110,86,207,.10); --tint-faint: rgba(110,86,207,.06); --veil: rgba(110,86,207,.14);
   --danger: #B42318; --danger-veil: rgba(180,35,24,.12);
   --ok: #17753A; --ok-veil: rgba(23,117,58,.12);
-  --wait: #9A6700; --wait-veil: rgba(154,103,0,.14);
-  --s-idle: var(--ok); --s-working: var(--wait); --s-blocked: var(--danger); --s-done: var(--ok); --s-unknown: #8A8D96;
+  --s-idle: var(--ok); --s-working: var(--accent); --s-blocked: var(--danger); --s-done: var(--ok); --s-unknown: #8A8D96;
   --knob: #FFFFFF; --track: rgba(0,0,0,.16);
   --shadow: 0 24px 56px -16px rgba(0,0,0,.30), 0 8px 24px -8px rgba(0,0,0,.14), 0 0 0 .5px rgba(0,0,0,.04);
   --chip-shadow: 0 4px 14px -4px rgba(0,0,0,.22);
@@ -190,8 +189,7 @@ const STYLE = `
     --tint: rgba(169,155,255,.14); --tint-faint: rgba(169,155,255,.08); --veil: rgba(169,155,255,.16);
     --danger: #F47067; --danger-veil: rgba(244,112,103,.14);
     --ok: #3FB950; --ok-veil: rgba(63,185,80,.14);
-    --wait: #E3B341; --wait-veil: rgba(227,179,65,.16);
-    --s-idle: var(--ok); --s-working: var(--wait); --s-blocked: var(--danger); --s-done: var(--ok); --s-unknown: #8B8E99;
+    --s-idle: var(--ok); --s-working: var(--accent-ink); --s-blocked: var(--danger); --s-done: var(--ok); --s-unknown: #8B8E99;
     --knob: #E4E4E7; --track: rgba(255,255,255,.20);
     --shadow: 0 24px 56px -16px rgba(0,0,0,.70), 0 8px 24px -8px rgba(0,0,0,.50), 0 0 0 1px rgba(255,255,255,.04), inset 0 1px 0 rgba(255,255,255,.07);
     --chip-shadow: 0 4px 14px -4px rgba(0,0,0,.60);
@@ -207,11 +205,14 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 .outline { position: fixed; display: none; border: 2px solid var(--outline); background: var(--veil); pointer-events: none; }
 .chip, .inflight-chip {
   position: fixed; display: none; align-items: center; gap: 6px;
-  height: 24px; padding: 0 8px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
+  height: 24px; padding: 0 8px; white-space: nowrap; max-width: calc(100vw - 16px); overflow: hidden;
   font: 12px/16px ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; color: var(--muted);
   background: var(--surface-solid); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--chip-shadow);
   pointer-events: none;
 }
+/* the container clips (overflow: hidden above); ellipsis lives on the text
+   pieces themselves, which is where a flex container actually applies it */
+.chip b, .inflight-chip b, .chip span, .inflight-chip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .chip b, .inflight-chip b { font-weight: 500; color: var(--accent-ink); }
 .chip i, .inflight-chip i { font-style: normal; color: var(--muted); }
 .inflight-chip.done { color: var(--ok); border-color: var(--ok); }
@@ -219,10 +220,11 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 .inflight-chip.done i { color: var(--ok); }
 .inflight-chip.blocked { color: var(--danger); border-color: var(--danger); }
 .inflight-chip.blocked b { color: var(--danger); }
+.inflight-chip.blocked i { color: var(--danger); }
 .inflight-chip svg { width: 12px; height: 12px; flex: none; }
 .multi { position: fixed; display: none; border: 2px solid var(--outline); pointer-events: none; }
 .multi-badge { position: absolute; top: -9px; left: -9px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
-.inflight { position: fixed; display: none; border: 2px solid var(--wait); background: var(--wait-veil); pointer-events: none; }
+.inflight { position: fixed; display: none; border: 2px dashed var(--outline); background: var(--veil); pointer-events: none; }
 .inflight.done { border-color: var(--ok); background: var(--ok-veil); }
 .inflight.blocked { border-color: var(--danger); background: var(--danger-veil); }
 .toast { position: fixed; display: none; right: 16px; bottom: 16px; padding: 8px 12px; font-size: 13px; line-height: 20px; color: var(--text); background: var(--surface-solid); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--chip-shadow); pointer-events: none; max-width: min(320px, calc(100vw - 32px)); }
@@ -240,18 +242,27 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .popup { background: var(--surface-solid); }
 }
+/* Only the agent list may shrink below its content height: every other
+   direct child keeps its natural size, so a short viewport squeezes the
+   scrollable list instead of clipping the footer. */
+.popup > * { flex: none; }
 
 /* header: two rows that never wrap */
 .popup-header { margin: 8px 8px 0; padding: 8px 10px; border-radius: 8px; background: var(--inset); }
-.popup-row { display: flex; align-items: center; gap: 12px; height: 18px; }
+.popup-row { display: flex; align-items: center; gap: 12px; height: 18px; line-height: 18px; }
 .popup-row + .popup-row { margin-top: 2px; }
-.popup-count { flex: none; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; font-weight: 500; color: var(--muted); }
+.popup-count { flex: none; display: inline-flex; align-items: center; height: 16px; padding: 0 6px; border-radius: 4px; background: var(--tint); color: var(--accent-ink); font-size: 12px; font-weight: 500; }
 .popup-label { flex: 1 1 auto; min-width: 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .popup-editor-btn { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 18px; font-weight: 500; color: var(--text); }
 .popup-editor-btn svg { width: 11px; height: 11px; color: var(--muted); }
 .popup-path { flex: 1 1 auto; min-width: 0; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
 .popup-path > span { unicode-bidi: plaintext; }
-.popup-hint { flex: none; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.popup-hint {
+  flex: 0 1 auto; min-width: 0; max-width: 70%; margin-left: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: right;
+}
+.popup-hint > span { unicode-bidi: plaintext; }
 
 /* prompt */
 .prompt { position: relative; }
@@ -282,14 +293,12 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 .status-idle { background: var(--s-idle); }
 .status-working { background: var(--s-working); }
 .status-blocked { background: var(--s-blocked); }
-/* done shares idle's green family but reads as a ring, not a filled dot: the
-   two most common states must be distinguishable by more than the word alone */
-.status-done { background: transparent; border: 1.5px solid var(--s-done); }
+.status-done { background: var(--s-done); }
 
 /* the To row: a field, in the same inset family as the header panel */
 .to-row { width: calc(100% - 16px); margin: 0 8px 8px; padding: 0 8px; height: 36px; border-radius: 8px; background: var(--inset); }
 .to-row:hover { background: var(--inset-2); }
-.to-row[hidden], .agents-groups[hidden] { display: none; }
+.to-row[hidden], .agents-groups[hidden], .agents-area[hidden] { display: none; }
 .to-label { font-size: 12px; font-weight: 600; color: var(--text); }
 .to-title { display: flex; align-items: center; gap: 4px; font-weight: 500; color: var(--text); }
 .to-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -303,8 +312,8 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 .agents-notice { margin: 0 8px 8px; padding: 0 8px; height: 36px; line-height: 36px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* the list */
-.agents-area { border-top: 1px solid var(--hair); }
-.agents-groups { max-height: 240px; overflow-y: auto; padding: 4px 0; border-bottom: 1px solid var(--hair); }
+.agents-area { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--hair); }
+.agents-groups { flex: 1 1 auto; min-height: 0; max-height: 240px; overflow-y: auto; padding: 4px 0; border-bottom: 1px solid var(--hair); }
 .agents-group-heading { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 16px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .focused-pill { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 4px; background: var(--tint); color: var(--accent-ink); font-size: 12px; font-weight: 500; }
 .agent-row { position: relative; height: 28px; padding: 0 16px; cursor: pointer; }
@@ -316,7 +325,7 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 .agent-row[aria-disabled="true"] { cursor: not-allowed; }
 .agent-row[aria-disabled="true"] .agent-title { color: var(--muted); }
 .agent-row[aria-disabled="true"] .agent-status { color: var(--danger); }
-.spawn-group { padding: 4px 0; }
+.spawn-group { flex: none; padding: 4px 0; }
 .spawn-row .agent-title { color: var(--accent-ink); font-weight: 500; }
 
 /* footer */
@@ -413,6 +422,8 @@ function boot(): void {
     popupPathWrap.appendChild(popupPathInner)
     const popupHintEl = document.createElement('span')
     popupHintEl.className = 'popup-hint'
+    const popupHintInner = document.createElement('span')
+    popupHintEl.appendChild(popupHintInner)
     row2.append(popupPathWrap, popupHintEl)
 
     header.append(row1, row2)
@@ -596,6 +607,17 @@ function boot(): void {
 
     // --- outline + chip -----------------------------------------------------
 
+    // Shared by the hover chip and the in-flight chip: clamps the left edge
+    // so the chip never runs past either viewport edge (a chip over an
+    // element near the left/right edge would otherwise get cut mid-word),
+    // and flips above/below the element the same way both chips already did.
+    function placeChip(chipEl: HTMLElement, rect: DOMRect): void {
+      const c = chipEl.getBoundingClientRect()
+      const left = Math.max(8, Math.min(rect.left, innerWidth - c.width - 8))
+      chipEl.style.left = `${left}px`
+      chipEl.style.top = rect.top <= 0 ? `${rect.bottom + 4}px` : `${rect.top - c.height - 4}px`
+    }
+
     function drawOutlineAt(el: Element): void {
       const rect = el.getBoundingClientRect()
       outline.style.display = 'block'
@@ -612,14 +634,13 @@ function boot(): void {
       if (hint !== null) {
         const i = document.createElement('i')
         i.textContent = '·'
-        nodes.push(i, document.createTextNode(truncate(stripHintSuffix(hint), 60)))
+        const hintSpan = document.createElement('span')
+        hintSpan.textContent = truncate(stripHintSuffix(hint), 60)
+        nodes.push(i, hintSpan)
       }
       chip.replaceChildren(...nodes)
       chip.style.display = 'flex'
-      const chipRect = chip.getBoundingClientRect()
-      const touchesTop = rect.top <= 0
-      chip.style.left = `${rect.left}px`
-      chip.style.top = touchesTop ? `${rect.bottom + 4}px` : `${rect.top - chipRect.height - 4}px`
+      placeChip(chip, rect)
     }
 
     function clearOutline(): void {
@@ -720,10 +741,7 @@ function boot(): void {
       inflightBox.style.width = `${rect.width}px`
       inflightBox.style.height = `${rect.height}px`
 
-      const chipRect = inflightChip.getBoundingClientRect()
-      const touchesTop = rect.top <= 0
-      inflightChip.style.left = `${rect.left}px`
-      inflightChip.style.top = touchesTop ? `${rect.bottom + 4}px` : `${rect.top - chipRect.height - 4}px`
+      placeChip(inflightChip, rect)
     }
 
     function stopInflightPoll(): void {
@@ -760,7 +778,9 @@ function boot(): void {
       b.textContent = 'DONE'
       const i = document.createElement('i')
       i.textContent = '·'
-      inflightChip.replaceChildren(buildCheckIcon(), b, i, document.createTextNode(label))
+      const labelSpan = document.createElement('span')
+      labelSpan.textContent = label
+      inflightChip.replaceChildren(buildCheckIcon(), b, i, labelSpan)
       positionInflight()
       stopInflightPoll()
       if (inflightSettleTimer !== undefined) clearTimeout(inflightSettleTimer)
@@ -1032,7 +1052,6 @@ function boot(): void {
 
     function setExpanded(next: boolean): void {
       expanded = next
-      popup.classList.toggle('expanded', next)
       agentsGroups.hidden = !next
       toRow.setAttribute('aria-expanded', String(next))
       chevronPath.setAttribute('d', next ? CHEVRON_UP : CHEVRON_DOWN)
@@ -1057,9 +1076,9 @@ function boot(): void {
       renderTo()
     }
 
-    function setRowsDisabled(disabled: boolean): void {
+    function disableRows(): void {
       for (const row of agentsArea.querySelectorAll<HTMLElement>('.agent-row')) {
-        if (disabled) row.setAttribute('aria-disabled', 'true')
+        row.setAttribute('aria-disabled', 'true')
       }
     }
 
@@ -1147,6 +1166,9 @@ function boot(): void {
       shotRow.style.display = screenshotAvailable ? 'flex' : 'none'
       agentsGroups.innerHTML = ''
       spawnGroup.innerHTML = ''
+      // Keeps the listbox's own 1px border-top from sitting flush on the
+      // footer's border-top when there is nothing inside it to give it height.
+      agentsArea.hidden = !state.herdr
 
       // Not while a send is in flight: "Sending…" must not flash back to
       // "Send"/"Copy" mid-request (a spawn failure reloads the list before
@@ -1219,7 +1241,7 @@ function boot(): void {
     }
 
     async function requestSpawn(mode: 'here' | 'worktree'): Promise<SpawnResponse | null> {
-      setRowsDisabled(true)
+      disableRows()
       showAgentsNotice('starting agent…')
 
       try {
@@ -1306,7 +1328,7 @@ function boot(): void {
       popupPathWrap.style.display = pathLabel !== null ? '' : 'none'
 
       const strippedHint = pickedInfo.hint !== null ? stripHintSuffix(pickedInfo.hint) : null
-      popupHintEl.textContent = strippedHint ?? ''
+      popupHintInner.textContent = strippedHint ?? ''
       popupHintEl.title = pickedInfo.hint ?? ''
       popupHintEl.style.display = strippedHint !== null ? '' : 'none'
 

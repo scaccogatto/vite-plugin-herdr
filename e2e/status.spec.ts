@@ -261,4 +261,52 @@ test.describe('spawn buttons', () => {
     }
   })
 
+  test('Esc during a spawn cancels the pending continuation, nothing is sent', async ({ context, page }) => {
+    const demo = await startDemo({ snapshot: liveSnapshot })
+
+    try {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+      await page.goto(`${demo.url}#bench`)
+      await arm(page)
+      await pickTask(page, 'label')
+      await waitForPreselectedAgent(page)
+
+      const before = demo.received().length
+      let routeFulfilled: () => void
+      const fulfilled = new Promise<void>((resolve) => {
+        routeFulfilled = resolve
+      })
+      await page.route('**/__herdr/spawn', async (route) => {
+        await new Promise((r) => setTimeout(r, 400))
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ok: true, pane_id: 'w1:p9', name: 'x', workspace_id: 'w1' }),
+        })
+        routeFulfilled()
+      })
+
+      await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+      await page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' }).click()
+      await page.keyboard.press('Enter')
+
+      const dialog = page.getByRole('dialog', { name: 'Send to herdr agent' })
+      await expect(dialog).toHaveClass(/sending/)
+      await expect(page.locator('[data-herdr-host] .agents-notice')).toContainText('starting agent')
+
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeHidden()
+
+      // Let the delayed /spawn response land and its continuation (guarded
+      // by sendSeq) run to completion before asserting nothing was sent.
+      await fulfilled
+      await page.waitForTimeout(50)
+
+      expect(demo.received().length).toBe(before)
+      expect(await page.evaluate(() => window.__herdr?.inflight() ?? null)).toBeNull()
+    } finally {
+      await demo.close()
+    }
+  })
+
 })

@@ -72,14 +72,24 @@ test.describe('popup interactions', () => {
     // ever leaving the picker's host
     const insideDialog = async (): Promise<boolean> =>
       page.evaluate(() => document.activeElement?.hasAttribute('data-herdr-host') === true)
+    const activeClass = async (): Promise<string> =>
+      page.evaluate(() => {
+        const root = document.querySelector('[data-herdr-host]')?.shadowRoot
+        const active = root?.activeElement
+        return active instanceof HTMLElement ? active.className : ''
+      })
     let steps = 0
+    const visited: string[] = []
     do {
       await page.keyboard.press('Tab')
       steps += 1
       expect(await insideDialog()).toBe(true)
+      visited.push(await activeClass())
     } while (steps < 8 && !(await page.locator('[data-herdr-host] textarea').evaluate((el) => el.getRootNode() instanceof ShadowRoot && (el.getRootNode() as ShadowRoot).activeElement === el)))
     expect(steps).toBeGreaterThanOrEqual(4)
     expect(steps).toBeLessThan(8)
+    // The new To field must be part of the cycle, not skipped over.
+    expect(visited.some((c) => c.includes('to-row'))).toBe(true)
 
     await page.keyboard.press('Shift+Tab')
     await expect(page.getByRole('button', { name: 'Open in editor' })).toBeFocused()
@@ -98,6 +108,18 @@ test.describe('popup interactions', () => {
         return box === null ? Infinity : box.y + box.height
       })
       .toBeLessThanOrEqual(420)
+
+    // Expanding the agent list must not push the footer (and Send) out of
+    // reach: .agents-groups scrolls internally instead of growing the popup.
+    await page.keyboard.press('ArrowDown')
+    await expect(page.locator('[data-herdr-host] .agents-groups')).toBeVisible()
+
+    const popupBox = await page.locator('[data-herdr-host] .popup').boundingBox()
+    const sendBox = await page.locator('[data-herdr-host] .send-btn').boundingBox()
+    expect(popupBox).not.toBeNull()
+    expect(sendBox).not.toBeNull()
+    expect(sendBox!.y + sendBox!.height).toBeLessThanOrEqual(popupBox!.y + popupBox!.height)
+    expect(popupBox!.y + popupBox!.height).toBeLessThanOrEqual(420)
   })
 
   test('the picked outline follows the element while the page scrolls under the open popup', async ({ page }) => {
@@ -221,6 +243,7 @@ test.describe('popup interactions', () => {
 
     await expect(page.locator('[data-herdr-host] textarea')).toHaveClass(/invalid/)
     expect(demo.received()).toEqual([])
+    expect(demo.raw().some((r) => r.method === 'agent.start')).toBe(false)
     await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeVisible()
   })
 
@@ -283,6 +306,65 @@ test.describe('popup interactions', () => {
     await expect(page.locator('[data-herdr-host] .send-btn')).toBeVisible()
     expect(sendBox!.x).toBeGreaterThanOrEqual(popupBox!.x)
     expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(popupBox!.x + popupBox!.width + 1)
+  })
+
+  test('a long popup hint ellipsizes instead of overflowing the header', async ({ page }) => {
+    // Real case: an absolute-path source hint (e.g. from a deeply nested
+    // worktree) is long enough to run past the header's inset. Stamp the
+    // element's own data-v-inspector attribute (the real mechanism
+    // sourceHint reads first) with such a path so the case reproduces
+    // deterministically, independent of this checkout's own directory depth.
+    const longPath = '../../../../../../../Users/gatto/Developer/scaccogatto/vite-plugin-herdr/demo/Bench.vue:17:7'
+    await page.locator('#task-link').evaluate((el, v) => el.setAttribute('data-v-inspector', v), longPath)
+
+    await arm(page)
+    await pickTask(page, 'link')
+    await waitForPreselectedAgent(page)
+
+    const header = page.locator('[data-herdr-host] .popup-header')
+    const hint = page.locator('[data-herdr-host] .popup-hint')
+    await expect(hint).toContainText('Bench.vue')
+    const headerBox = await header.boundingBox()
+    const hintBox = await hint.boundingBox()
+    expect(headerBox).not.toBeNull()
+    expect(hintBox).not.toBeNull()
+    // The hint's own box must never run past the header's inset (the popup
+    // clips at its rounded border with no ellipsis otherwise).
+    expect(hintBox!.x + hintBox!.width).toBeLessThanOrEqual(headerBox!.x + headerBox!.width + 1)
+
+    // The stamped path is long enough that the hint truly overflows its box
+    // - proves the ellipsis is doing something, not that the hint was short.
+    const overflowing = await hint.evaluate((el) => el.scrollWidth > el.clientWidth)
+    expect(overflowing).toBe(true)
+  })
+
+  test('the hint right-aligns under Open in editor when there is no ancestor path', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+
+    // #task-label has an id, so selectorPath stops there: no ancestor path,
+    // .popup-path is hidden, and the hint must still sit under the editor
+    // button rather than sliding to the left edge.
+    await expect(page.locator('[data-herdr-host] .popup-path')).toBeHidden()
+    const hintBox = await page.locator('[data-herdr-host] .popup-hint').boundingBox()
+    const editorBox = await page.locator('[data-herdr-host] .popup-editor-btn').boundingBox()
+    expect(hintBox).not.toBeNull()
+    expect(editorBox).not.toBeNull()
+    expect(Math.abs(hintBox!.x + hintBox!.width - (editorBox!.x + editorBox!.width))).toBeLessThanOrEqual(1)
+  })
+
+  test('the hover chip stays inside a narrow viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 })
+    await arm(page)
+    await page.locator('#task-label').hover()
+
+    const chip = page.locator('[data-herdr-host] .chip')
+    await expect(chip).toBeVisible()
+    const box = await chip.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390)
   })
 
   test('no text under 12px except pane ids', async ({ page }) => {

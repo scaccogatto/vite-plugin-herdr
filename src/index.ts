@@ -24,7 +24,7 @@ export interface Options {
    */
   appendTo?: string | RegExp
   /**
-   * Offers the real-pixel screenshot checkbox in the popup. `'auto'`
+   * Offers the real-pixel screenshot switch in the popup. `'auto'`
    * (default) turns it on only on macOS (the only platform `screenshotCommand`
    * currently supports); `true` forces it on, `false` turns it off.
    */
