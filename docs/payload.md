@@ -58,4 +58,20 @@ This protocol is fixed before any run happens, so the decision is read off the n
 
 ## Results
 
-Pending: filled in when the benchmark runs.
+Run on 2026-09-07 with `--model sonnet --reps 1` (Claude Sonnet 5 through `claude -p`): 10 tasks, 3 variants, 30 headless runs, 0 errors after re-running transient CLI failures, total cost about 4 USD. Raw data: [runs.jsonl](bench/2026-09-07/runs.jsonl), rendered summary: [summary.md](bench/2026-09-07/summary.md).
+
+| Variant | Kind | n | successRate | meanTurns | meanCostUsd | rightFileRate |
+|---|---|---|---|---|---|---|
+| text | edit | 5 | 100% | 3.8 | $0.11 | 100% |
+| text | visual | 5 | 60% | 6.0 | $0.14 | 80% |
+| text+shot | edit | 5 | 100% | 4.0 | $0.11 | 100% |
+| text+shot | visual | 5 | 60% | 5.4 | $0.13 | 80% |
+| text+shot+outline | edit | 5 | 100% | 3.4 | $0.10 | 100% |
+| text+shot+outline | visual | 5 | 80% | 4.6 | $0.13 | 80% |
+
+Reading:
+
+- Source hints do the heavy lifting: every variant lands on the right file for every edit task, in 3 to 4 turns.
+- A bare screenshot changes nothing on visual tasks (same 60%), and costs time (mean duration doubled).
+- The screenshot with the picked element outlined is the only variant that moves visual tasks: +20 points and 23% fewer turns, with no regression on edit tasks. The decision rule promotes it, so the real-pixel screenshot ships as an opt-in, always with the outline drawn.
+- Caveat: five visual tasks with one repetition each is a small sample; the gap comes from one task (`hover`) that only the outlined variant solved. Re-run with `--reps 3` before treating the numbers as precise. The direction, not the decimals, is what the decision rests on.
