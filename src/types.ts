@@ -72,6 +72,22 @@ export interface PromptResponse {
   ok: true
   target: string
   title: string | null
+  pane_id: string | null
+}
+
+/** Request body for POST /__herdr/spawn */
+export interface SpawnRequest {
+  mode: 'here' | 'worktree'
+  name?: string
+  branch?: string
+}
+
+/** Successful response from POST /__herdr/spawn */
+export interface SpawnResponse {
+  ok: true
+  pane_id: string
+  name: string
+  workspace_id: string | null
 }
 
 /** Error response from the endpoints */

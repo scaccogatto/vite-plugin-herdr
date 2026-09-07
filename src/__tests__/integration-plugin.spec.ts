@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createServer, type ViteDevServer } from 'vite'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import herdr from '../index.ts'
 import { startFakeHerdr, type FakeHerdr } from './helpers/fake-herdr.ts'
 
@@ -49,7 +49,12 @@ describe('plugin wires the herdr routes', () => {
   beforeAll(async () => {
     fake = await startFakeHerdr({
       'session.snapshot': () => snapshot,
-      'agent.prompt': () => ({ type: 'agent_prompted', agent: { terminal_title_stripped: 'Settings polish' } }),
+      'agent.prompt': () => ({
+        type: 'agent_prompted',
+        agent: { pane_id: 'w1:p2', terminal_title_stripped: 'Settings polish' },
+      }),
+      'pane.split': () => ({ type: 'pane_split', pane: { pane_id: 'w1:p9' } }),
+      'agent.start': () => ({ type: 'agent_started', agent: { pane_id: 'w1:p9' } }),
     })
     server = await createServer({
       configFile: false,
@@ -93,6 +98,75 @@ describe('plugin wires the herdr routes', () => {
   it('rejects cross-origin callers', async () => {
     const res = await fetch(`${url}/__herdr/state`, { headers: { origin: 'http://evil.test' } })
     expect(res.status).toBe(403)
+  })
+
+  it('subscribes to pane.agent_status_changed for the prompted pane after a successful prompt', async () => {
+    const countBefore = fake.received.filter((r) => r.method === 'events.subscribe').length
+
+    const res = await fetch(`${url}/__herdr/prompt`, {
+      method: 'POST',
+      headers: { origin: url, 'content-type': 'application/json' },
+      body: JSON.stringify({ target: 'w1:p2', prompt: 'watch this one', element }),
+    })
+    expect(res.status).toBe(200)
+
+    const deadline = Date.now() + 2000
+    let subs = fake.received.filter((r) => r.method === 'events.subscribe')
+    while (subs.length <= countBefore && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 20))
+      subs = fake.received.filter((r) => r.method === 'events.subscribe')
+    }
+
+    expect(subs.length).toBeGreaterThan(countBefore)
+    expect(subs.at(-1)?.params.subscriptions).toEqual([{ type: 'pane.agent_status_changed', pane_id: 'w1:p2' }])
+  })
+
+  describe('POST /__herdr/spawn', () => {
+    const originalPaneId = process.env.HERDR_PANE_ID
+
+    afterEach(() => {
+      if (originalPaneId === undefined) delete process.env.HERDR_PANE_ID
+      else process.env.HERDR_PANE_ID = originalPaneId
+    })
+
+    it('mode "here" returns 200 with the spawned pane id when HERDR_PANE_ID is set', async () => {
+      process.env.HERDR_PANE_ID = 'w1:p1'
+
+      const res = await fetch(`${url}/__herdr/spawn`, {
+        method: 'POST',
+        headers: { origin: url, 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'here' }),
+      })
+
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { ok: boolean; pane_id: string }
+      expect(body.ok).toBe(true)
+      expect(body.pane_id).toBe('w1:p9')
+    })
+
+    it('rejects an invalid mode with 400', async () => {
+      const res = await fetch(`${url}/__herdr/spawn`, {
+        method: 'POST',
+        headers: { origin: url, 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'nope' }),
+      })
+
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 409 not_in_herdr when HERDR_PANE_ID is not set', async () => {
+      delete process.env.HERDR_PANE_ID
+
+      const res = await fetch(`${url}/__herdr/spawn`, {
+        method: 'POST',
+        headers: { origin: url, 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'here' }),
+      })
+
+      expect(res.status).toBe(409)
+      const body = (await res.json()) as { error: string }
+      expect(body.error).toBe('not_in_herdr')
+    })
   })
 })
 

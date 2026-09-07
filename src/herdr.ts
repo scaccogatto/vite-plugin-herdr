@@ -197,6 +197,8 @@ export function httpStatus(code: string): number {
       return 404
     case 'agent_blocked':
       return 409
+    case 'not_in_herdr':
+      return 409
     case 'busy':
       return 503
     default:

@@ -97,3 +97,53 @@ describe('herdr plugin', () => {
     expect(result).toBeUndefined()
   })
 })
+
+function callHook(hook: unknown, ...args: unknown[]): unknown {
+  if (typeof hook === 'object' && hook !== null && 'handler' in hook) {
+    return (hook as { handler: (...a: unknown[]) => unknown }).handler(...args)
+  }
+  if (typeof hook === 'function') {
+    return (hook as (...a: unknown[]) => unknown)(...args)
+  }
+  throw new Error('hook should be a function or object with handler')
+}
+
+describe('appendTo', () => {
+  it('without appendTo, there is no transform hook', () => {
+    const plugin = herdr({})
+    expect((plugin as unknown as Record<string, unknown>).transform).toBeUndefined()
+  })
+
+  it('with appendTo, transform appends the client import for matching ids and leaves others untouched', () => {
+    const plugin = herdr({ appendTo: 'entry.ts' })
+
+    expect(plugin.transform).toBeDefined()
+    const matched = callHook(plugin.transform, 'const x = 1', '/app/entry.ts?v=1') as
+      | { code: string; map: null }
+      | undefined
+    expect(matched).toBeDefined()
+    expect(matched?.code).toBe(
+      "const x = 1\nimport 'virtual:vite-plugin-herdr/client?hotkey=ctrl%2Bb&endpoint=%2F__herdr&maxDepth=3&maxLines=60'\n",
+    )
+    expect(matched?.map).toBeNull()
+
+    const unmatched = callHook(plugin.transform, 'const y = 2', '/app/other.ts')
+    expect(unmatched).toBeUndefined()
+  })
+
+  it('with appendTo, transformIndexHtml returns undefined', () => {
+    const plugin = herdr({ appendTo: 'entry.ts' })
+    const result = callHook(plugin.transformIndexHtml)
+    expect(result).toBeUndefined()
+  })
+
+  it('with appendTo as a RegExp, matches ids by pattern', () => {
+    const plugin = herdr({ appendTo: /\/entry\.m?js$/ })
+
+    const matched = callHook(plugin.transform, 'code', '/app/entry.mjs') as { code: string } | undefined
+    expect(matched).toBeDefined()
+
+    const unmatched = callHook(plugin.transform, 'code', '/app/entry.ts')
+    expect(unmatched).toBeUndefined()
+  })
+})

@@ -8,6 +8,7 @@ export interface FakeHerdr {
   socketPath: string
   received: { method: string; params: Record<string, unknown> }[]
   pushEvent(line: unknown): void
+  subscriptionOpen(): boolean
   close(): Promise<void>
 }
 
@@ -59,7 +60,14 @@ export function startFakeHerdr(handlers: Record<string, (params: Record<string, 
 
   const server = net.createServer((socket) => {
     sockets.add(socket)
-    socket.on('close', () => sockets.delete(socket))
+    socket.on('close', () => {
+      sockets.delete(socket)
+      if (subscribeSocket === socket) subscribeSocket = null
+    })
+    // A subscription socket destroyed client-side (watchAgent closing) can leave
+    // a pending write racing the close; without a listener that surfaces as an
+    // unhandled 'error' event and crashes the test process.
+    socket.on('error', () => {})
 
     let buffer = ''
     socket.on('data', (chunk) => {
@@ -82,6 +90,9 @@ export function startFakeHerdr(handlers: Record<string, (params: Record<string, 
         received,
         pushEvent(line: unknown) {
           subscribeSocket?.write(JSON.stringify(line) + '\n')
+        },
+        subscriptionOpen() {
+          return subscribeSocket !== null
         },
         close() {
           return new Promise<void>((res) => {
