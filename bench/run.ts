@@ -19,6 +19,7 @@ interface Args {
   maxTurns: number
   dryRun: boolean
   reportOnly: boolean
+  onlyFailed: boolean
 }
 
 function parseArgs(argv: string[]): Args {
@@ -43,6 +44,7 @@ function parseArgs(argv: string[]): Args {
     maxTurns: Number(get('max-turns') ?? '30'),
     dryRun: has('dry-run'),
     reportOnly: has('report-only'),
+    onlyFailed: has('only-failed'),
   }
 }
 
@@ -138,6 +140,37 @@ function stripCodeFences(s: string): string {
   return match?.[1] ?? trimmed
 }
 
+function collapseWhitespace(s: string): string {
+  return s.replace(/\s+/g, ' ').trim()
+}
+
+function extractJson(s: string): { score: number; reason: string } | null {
+  const stripped = stripCodeFences(s)
+
+  // Try to find and parse the first JSON object
+  const firstMatch = stripped.match(/\{[\s\S]*?\}/)
+  if (firstMatch !== null) {
+    try {
+      return JSON.parse(firstMatch[0]) as { score: number; reason: string }
+    } catch {
+      // fall through to try last match
+    }
+  }
+
+  // Try to find and parse the last JSON object
+  const allMatches = stripped.match(/\{[\s\S]*?\}/g)
+  if (allMatches !== null && allMatches.length > 0) {
+    const lastMatch = allMatches[allMatches.length - 1] ?? ''
+    try {
+      return JSON.parse(lastMatch) as { score: number; reason: string }
+    } catch {
+      // fall through to return null
+    }
+  }
+
+  return null
+}
+
 function getChangedFiles(cwd: string): string[] {
   const tracked = execSync('git diff --name-only', { cwd, encoding: 'utf8' })
     .split('\n')
@@ -168,13 +201,18 @@ async function judge(task: Task, tmp: string, model: string): Promise<{ score: n
   const envelope = parseEnvelope(raw)
   if (!envelope.ok || envelope.data.result === undefined) return { score: null, success: false, note: 'judge_unparsable' }
 
-  try {
-    const parsed = JSON.parse(stripCodeFences(envelope.data.result)) as { score: number; reason: string }
-    if (parsed.score !== 0 && parsed.score !== 1 && parsed.score !== 2) throw new Error('score out of range')
-    return { score: parsed.score, success: parsed.score === 2, note: parsed.reason }
-  } catch {
-    return { score: null, success: false, note: 'judge_unparsable' }
+  const parsed = extractJson(envelope.data.result)
+  if (parsed === null) {
+    const snippet = collapseWhitespace(envelope.data.result).slice(0, 160)
+    return { score: null, success: false, note: `judge_unparsable: ${snippet}` }
   }
+
+  if (parsed.score !== 0 && parsed.score !== 1 && parsed.score !== 2) {
+    const snippet = collapseWhitespace(envelope.data.result).slice(0, 160)
+    return { score: null, success: false, note: `judge_unparsable: ${snippet}` }
+  }
+
+  return { score: parsed.score, success: parsed.score === 2, note: parsed.reason }
 }
 
 async function buildResult(
@@ -195,6 +233,13 @@ async function buildResult(
   if (!envelope.ok) return { ...base, ...empty, isError: true, note: envelope.snippet }
 
   const { data } = envelope
+
+  // Handle CLI errors: don't proceed with judge or file checks
+  if (data.is_error) {
+    const snippet = collapseWhitespace(String(data.result ?? '')).slice(0, 200)
+    return { ...base, ...empty, isError: true, note: `cli_error: ${snippet}` }
+  }
+
   const changedFiles = getChangedFiles(tmp)
   const rightFile = changedFiles.includes(task.expectFile)
 
@@ -221,13 +266,29 @@ async function buildResult(
     numTurns: data.num_turns ?? null,
     durationMs: data.duration_ms ?? null,
     costUsd: data.total_cost_usd ?? null,
-    isError: Boolean(data.is_error),
+    isError: false,
     note,
   }
 }
 
 function formatCost(cost: number | null): string {
   return cost === null ? '?' : `$${cost.toFixed(2)}`
+}
+
+async function cleanupFailedRuns(runsPath: string): Promise<void> {
+  const content = await readFile(runsPath, 'utf8').catch(() => '')
+  const results: RunResult[] = content
+    .split('\n')
+    .filter((l) => l.trim().length > 0)
+    .map((l) => JSON.parse(l) as RunResult)
+
+  // Filter out failed runs
+  const passing = results.filter((r) => !r.isError && !r.note.startsWith('judge_unparsable'))
+
+  if (passing.length < results.length) {
+    const filtered = passing.map((r) => JSON.stringify(r)).join('\n')
+    await writeFile(runsPath, filtered.length > 0 ? `${filtered}\n` : '', 'utf8')
+  }
 }
 
 async function report(outDir: string): Promise<void> {
@@ -256,12 +317,18 @@ async function main(): Promise<void> {
     return
   }
 
+  const runsPath = join(args.out, 'runs.jsonl')
+
+  // Clean up failed runs if --only-failed is set
+  if (args.onlyFailed) {
+    await cleanupFailedRuns(runsPath)
+  }
+
   const allTasks = await readTasks()
   const tasks = args.tasks === null ? allTasks : allTasks.filter((t) => args.tasks?.includes(t.id))
   const captures = await readCaptures(args.out)
 
   const demoRoot = resolve(import.meta.dirname, '../demo')
-  const runsPath = join(args.out, 'runs.jsonl')
   const done = await loadDone(runsPath)
 
   for (const task of tasks) {
@@ -273,61 +340,88 @@ async function main(): Promise<void> {
         const key = `${task.id}|${variant}|${rep}`
         if (done.has(key)) continue
 
-        const tmp = await mkdtemp(join(tmpdir(), 'herdr-bench-run-'))
-        try {
-          await cp(demoRoot, tmp, { recursive: true, filter: (src) => !src.split(sep).includes('node_modules') })
-          // CLAUDE.md and the screenshot live inside the copy and are part of the
-          // base commit, so the agent can read them without leaving its cwd and
-          // they never show up as changed files.
-          await writeFile(join(tmp, 'CLAUDE.md'), CLAUDE_MD, 'utf8')
-          const shotSource =
-            variant === 'text' ? null : variant === 'text+shot' ? capture.shot : capture.shotOutline
-          let shotPath: string | null = null
-          if (shotSource !== null) {
-            await mkdir(join(tmp, '.herdr-bench'), { recursive: true })
-            shotPath = join(tmp, '.herdr-bench', 'picked-element.png')
-            await cp(resolve(args.out, shotSource), shotPath)
-          }
-          execSync('git init -q', { cwd: tmp })
-          execSync('git add -A', { cwd: tmp })
-          execSync('git -c user.name=bench -c user.email=bench@example.com commit -q -m base', { cwd: tmp })
+        let originalResult: RunResult | null = null
+        let retryCount = 0
 
-          const element = { ...capture.element, hint: rewriteHint(capture.element.hint, demoRoot, tmp) }
-          const prompt = withScreenshot(composePrompt(element, task.prompt), shotPath)
-
-          if (args.dryRun) {
-            if (rep === 1) {
-              console.log(`--- ${task.id} ${variant} ---`)
-              console.log(prompt)
+        while (true) {
+          const tmp = await mkdtemp(join(tmpdir(), 'herdr-bench-run-'))
+          try {
+            await cp(demoRoot, tmp, { recursive: true, filter: (src) => !src.split(sep).includes('node_modules') })
+            // CLAUDE.md and the screenshot live inside the copy and are part of the
+            // base commit, so the agent can read them without leaving its cwd and
+            // they never show up as changed files.
+            await writeFile(join(tmp, 'CLAUDE.md'), CLAUDE_MD, 'utf8')
+            const shotSource =
+              variant === 'text' ? null : variant === 'text+shot' ? capture.shot : capture.shotOutline
+            let shotPath: string | null = null
+            if (shotSource !== null) {
+              await mkdir(join(tmp, '.herdr-bench'), { recursive: true })
+              shotPath = join(tmp, '.herdr-bench', 'picked-element.png')
+              await cp(resolve(args.out, shotSource), shotPath)
             }
-            continue
+            execSync('git init -q', { cwd: tmp })
+            execSync('git add -A', { cwd: tmp })
+            execSync('git -c user.name=bench -c user.email=bench@example.com commit -q -m base', { cwd: tmp })
+
+            const element = { ...capture.element, hint: rewriteHint(capture.element.hint, demoRoot, tmp) }
+            const prompt = withScreenshot(composePrompt(element, task.prompt), shotPath)
+
+            if (args.dryRun) {
+              if (rep === 1) {
+                console.log(`--- ${task.id} ${variant} ---`)
+                console.log(prompt)
+              }
+              break
+            }
+
+            const { raw, timedOut } = await runClaudeCli(
+              [
+                '-p',
+                prompt,
+                '--output-format',
+                'json',
+                '--permission-mode',
+                'acceptEdits',
+                '--allowedTools',
+                'Read,Edit,Write,Grep,Glob',
+                '--max-turns',
+                String(args.maxTurns),
+                '--model',
+                args.model,
+              ],
+              tmp,
+            )
+
+            const result = await buildResult(task, variant, rep, tmp, raw, timedOut, args.model)
+
+            // Check if we need to retry on transient errors
+            const isTransientError = result.isError && (result.note.startsWith('cli_error') || result.note.startsWith('timeout'))
+            if (isTransientError && retryCount === 0) {
+              originalResult = result
+              retryCount++
+              console.log(`retrying ${task.id} ${variant}`)
+              // Wait 30 seconds before retry
+              await new Promise((resolve) => setTimeout(resolve, 30000))
+              // Continue to next iteration to retry
+              continue
+            }
+
+            // Record the result (either first try or retry)
+            let finalResult = result
+            if (originalResult !== null && isTransientError) {
+              // Retry also failed, combine notes
+              const originalNote = originalResult.note
+              finalResult = { ...result, note: `retry: ${originalNote} | ${result.note}` }
+            }
+
+            await appendFile(runsPath, `${JSON.stringify(finalResult)}\n`, 'utf8')
+            console.log(
+              `${task.id} ${variant} rep${rep} ${finalResult.success ? 'ok' : 'fail'} turns=${finalResult.numTurns ?? '?'} cost=${formatCost(finalResult.costUsd)}`,
+            )
+            break
+          } finally {
+            await rm(tmp, { recursive: true, force: true })
           }
-
-          const { raw, timedOut } = await runClaudeCli(
-            [
-              '-p',
-              prompt,
-              '--output-format',
-              'json',
-              '--permission-mode',
-              'acceptEdits',
-              '--allowedTools',
-              'Read,Edit,Write,Grep,Glob',
-              '--max-turns',
-              String(args.maxTurns),
-              '--model',
-              args.model,
-            ],
-            tmp,
-          )
-
-          const result = await buildResult(task, variant, rep, tmp, raw, timedOut, args.model)
-          await appendFile(runsPath, `${JSON.stringify(result)}\n`, 'utf8')
-          console.log(
-            `${task.id} ${variant} rep${rep} ${result.success ? 'ok' : 'fail'} turns=${result.numTurns ?? '?'} cost=${formatCost(result.costUsd)}`,
-          )
-        } finally {
-          await rm(tmp, { recursive: true, force: true })
         }
       }
     }

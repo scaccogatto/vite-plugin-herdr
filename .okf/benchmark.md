@@ -31,13 +31,8 @@ sources:
 
 ## Decision Rule
 
-Image enters v2 if:
-- Visual tasks: success +≥15 points or turns -≥25%, AND
-- Text tasks: no regression.
-
-Otherwise: no screenshot in product; decision documented in README with data.
-
-Outline: if outline+shot beats shot naked on visual tasks, keep it in v2.
+Screenshot enters v2 if: visual success +≥15 points or turns -≥25% (vs. text), without visual or edit regression (no variant qualifies if its visual success regresses).
+Outline: only if it beats text+shot on visual metrics, and only when it qualifies.
 
 ## Deliverable
 

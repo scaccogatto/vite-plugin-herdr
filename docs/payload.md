@@ -50,9 +50,9 @@ This protocol is fixed before any run happens, so the decision is read off the n
 
 **Decision rule.**
 
-- The image enters the product (v2, opt-in) only if, on the visual tasks, it raises success by at least 15 points **or** cuts turns by at least 25%, **and** it does not regress the textual tasks.
+- The screenshot enters the product (v2, opt-in) only if it raises visual success by at least 15 points **or** cuts visual turns by at least 25% (vs. text), **without regression in visual or edit success**. A screenshot variant that regresses visual success is rejected, even if it cuts turns.
 - Otherwise: no screenshot ships. This file's Results section, and the README, say so with the numbers.
-- The outline stays in the product's image path only if `text+shot+outline` beats `text+shot` on the visual tasks; if not, the outline itself doesn't ship even if the screenshot does.
+- The outline stays in the product's image path only if `text+shot+outline` beats `text+shot` on visual success or visual turns, and only when the outline variant itself qualifies; if not, the outline doesn't ship even if `text+shot` does.
 
 **Cost note.** 90 headless runs at an estimated $0.15–$0.40 each puts the full run at roughly $15–$40. This is confirmed before the benchmark launches, not assumed; repetitions drop from 3 to 2 first if the estimate needs trimming.
 

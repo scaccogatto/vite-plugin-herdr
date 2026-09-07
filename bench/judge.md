@@ -18,6 +18,4 @@ Grade the diff against the rubric:
 - 1: the diff partially implements the rubric, or implements it but also makes unrelated changes.
 - 0: the diff does not address the rubric.
 
-Answer with a single JSON object only, no other text before or after it:
-
-{"score": 0 | 1 | 2, "reason": "<one sentence>"}
+Reply with exactly one line containing only the JSON object, no prose, no code fences, for example {"score": 2, "reason": "the diff fixes the issue cleanly"}.
