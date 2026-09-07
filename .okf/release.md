@@ -7,6 +7,8 @@ generated:
   by: claude/fable-5
   at: 2026-09-07
 status: draft
+sources:
+  - resource: ../CHANGELOG.md
 ---
 
 ## Versioning
@@ -36,7 +38,7 @@ Manual entries in `CHANGELOG.md` under `[Unreleased]` sections (Features, Bug Fi
 2. Update `CHANGELOG.md`: move `[Unreleased]` items to `## [0.1.0] - 2026-09-15`.
 3. Commit: `git add package.json CHANGELOG.md && git commit -m "chore: release 0.1.0"`.
 4. Tag: `git tag v0.1.0 && git push --tags`.
-5. GitHub Actions (`.github/workflows/release.yml`) picks up tag, runs `npm run build`, publishes to npm with provenance (no explicit auth needed via `npm publish --provenance`; GitHub OIDC).
+5. `.github/workflows/release.yml` fires on the `v*` tag push (or manual `workflow_dispatch`): `npm ci`, `npm run build`, then `npm publish --provenance`. The job requests `id-token: write` and uses no `NPM_TOKEN` secret: publish auth is npm trusted publishing over GitHub OIDC, which requires the npm package to have this repo/workflow registered as a trusted publisher on npmjs.com before the first release. If trusted publishing isn't configured yet, the fallback is an `NPM_TOKEN` secret and `npm publish --provenance` with the token in `NODE_AUTH_TOKEN`, swapped in the same step.
 
 ## Check Before Publish
 
@@ -44,4 +46,4 @@ Manual entries in `CHANGELOG.md` under `[Unreleased]` sections (Features, Bug Fi
 - No uncommitted changes.
 - Tag matches version in `package.json`.
 
-Workflow guards: version check (`npm view`) prevents duplicate publish.
+Workflow guard: before publishing, the job runs `npm view <name>@<version>` and skips the publish step entirely if that version already exists on the registry, so a re-run or a duplicate tag push can't fail loudly or double-publish.

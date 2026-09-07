@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="120" viewBox="0 0 440 120" role="img" aria-label="vite-plugin-herdr">
+  <rect width="440" height="120" rx="16" fill="#1e1e2e" />
+  <rect x="60" y="48" width="24" height="24" rx="5" fill="#cba6f7" />
+  <text x="100" y="61" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="600" fill="#ffffff" dominant-baseline="central" text-anchor="start">vite-plugin-herdr</text>
+</svg>
