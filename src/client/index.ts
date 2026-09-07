@@ -893,7 +893,7 @@ function boot(): void {
       // the way and the hover outline must be the only overlay on screen -
       // the in-flight box/chip started further down stay hidden until the
       // capture (which finishes before the response) is done.
-      const wantsShot = screenshotAvailable && shotCheckbox.checked
+      const wantsShot = screenshotAvailable && shotCheckbox.checked && document.visibilityState === 'visible'
       let screenshot: ScreenshotRequest | undefined
 
       if (wantsShot) {
@@ -907,7 +907,7 @@ function boot(): void {
           rect: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
           screenX: window.screenX,
           screenY: window.screenY,
-          chromeLeft: (outerWidth - innerWidth) / 2,
+          chromeLeft: 0, // macOS Chrome has no side borders; a side panel is right-aligned by default, so the viewport's left edge is the window's left edge
           chromeTop: outerHeight - innerHeight,
           dpr: devicePixelRatio,
         }

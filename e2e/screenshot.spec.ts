@@ -108,4 +108,26 @@ test.describe('screenshot option on', () => {
     await expect(checkboxAfterReload).toBeVisible()
     await expect(checkboxAfterReload).toBeChecked()
   })
+
+  test('skips the capture when the tab is hidden', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+
+    const checkbox = page.locator('[data-herdr-host] .shot-row input[type="checkbox"]')
+    await expect(checkbox).toBeVisible()
+    await checkbox.check()
+
+    await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+    await page.evaluate(() => Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }))
+    await waitForPreselectedAgent(page)
+    await page.keyboard.press('Enter')
+
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+
+    const sent = demo.received()
+    const lastSent = sent[sent.length - 1]
+    expect(lastSent).toBeDefined()
+    const text = lastSent!.text
+    expect(text).not.toContain('Screenshot: ')
+  })
 })
