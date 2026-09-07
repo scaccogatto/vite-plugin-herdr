@@ -180,12 +180,13 @@ export async function postPrompt(
   opts: { socketPath: string; inlineMaxChars: number; roots: string[]; attachmentDir: string },
 ): Promise<PromptResponse> {
   const el: ElementInfo = { ...body.element, hint: absolutizeHint(body.element.hint, opts.roots) }
-  const attachment = renderAttachment(el)
+  const extras: ElementInfo[] = (body.extras ?? []).map((extra) => ({ ...extra, hint: absolutizeHint(extra.hint, opts.roots) }))
+  const attachment = renderAttachment(el, extras)
 
   const text =
     attachment.length > opts.inlineMaxChars
       ? composePrompt(el, body.prompt, { attachmentPath: await writeAttachment(attachment, opts.attachmentDir) })
-      : composePrompt(el, body.prompt)
+      : composePrompt(el, body.prompt, { extras })
 
   const result = obj(await request(opts.socketPath, 'agent.prompt', { target: body.target, text }))
   const agent = result ? obj(result.agent) : null

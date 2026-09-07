@@ -58,6 +58,7 @@ Outside herdr the same popup composes the same prompt and copies it to the clipb
 | `ctrl+b` | Arm the picker |
 | hover | Highlight the element under the cursor |
 | click | Pick the highlighted element, open the popup |
+| `Shift+click` | Add the element to the selection, keep picking |
 | `Up` / `Down` | Change the selected agent |
 | `Enter` | Send (or copy, without herdr) |
 | `Shift+Enter` | New line in the prompt |
@@ -106,6 +107,16 @@ display: inline-flex; padding: 8px 16px; color: rgb(255,255,255); ...
 ````
 
 Snippet and computed styles under `inlineMaxChars` (1500 by default) go straight in the prompt. Longer ones are written to a markdown file under `os.tmpdir()/vite-plugin-herdr/` and referenced with a `Details: <path>` line instead of inflating the turn.
+
+Shift+click adds up to 4 more elements to the selection before you type the prompt; the first one picked stays `element`, the rest ride along as numbered extras so one comment can cover all of them. Each extra adds an `Element N:` line, its own fenced markup (marked `data-herdr-picked="N"`), and a `Styles:` line:
+
+````
+Element 2: nav > a.team-link  140x20 at (860,24)
+```html
+<a class="team-link" data-herdr-picked="2">Meet the team</a>
+```
+Styles: display: inline; color: rgb(59,130,246)
+````
 
 Whether a real screenshot is worth adding to this payload is decided by a pre-registered benchmark, not by feel: protocol and results are in [docs/payload.md](docs/payload.md), linked here once they land.
 
@@ -181,7 +192,6 @@ For plain Vite SPA/MPA apps, `transformIndexHtml` injection (the default) is the
 ## Roadmap
 
 - Real-pixel screenshot, opt-in, only if the benchmark promotes it
-- Multi-select with one shared comment
 - Nuxt and other meta-framework injection
 - Chrome extension for pages you don't serve
 

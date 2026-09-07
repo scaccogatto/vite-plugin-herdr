@@ -10,8 +10,11 @@ import type {
   StateResponse,
 } from '../types.ts'
 import { composePrompt } from '../compose.ts'
-import { HOST_ATTR, deepElementFromPoint, describeElement, matchesHotkey, parseHotkey, sourceHint } from './dom.ts'
+import { HOST_ATTR, deepElementFromPoint, describeElement, matchesHotkey, parseHotkey, selectorPath, sourceHint } from './dom.ts'
 import { groupAgents, pickAgent, selectableIds } from './agents.ts'
+
+/** Max total picked elements: the primary plus up to 4 extras */
+const MAX_SELECTION = 5
 
 /** Debug/bench API exposed on window.__herdr */
 export interface HerdrApi {
@@ -22,6 +25,8 @@ export interface HerdrApi {
   close(): void
   /** The pane id currently shown in-flight, or null */
   inflight(): string | null
+  /** Selector paths of the elements added to the multi-selection via shift+click */
+  selection(): string[]
 }
 
 declare global {
@@ -78,10 +83,13 @@ const STYLE = `
 * { box-sizing: border-box; }
 .outline { position: fixed; display: none; border: 2px solid #cba6f7; background: rgba(203, 166, 247, 0.12); pointer-events: none; }
 .chip { position: fixed; display: none; background: #1e1e2e; color: #cba6f7; border: 1px solid #45475a; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
+.multi { position: fixed; display: none; border: 2px solid #cba6f7; pointer-events: none; }
+.multi-badge { position: absolute; top: -8px; left: -8px; width: 16px; height: 16px; border-radius: 50%; background: #cba6f7; color: #1e1e2e; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .inflight { position: fixed; display: none; border: 2px dashed #f9e2af; background: rgba(249, 226, 175, 0.12); pointer-events: none; transition: border-color 0.2s, background-color 0.2s; }
 .inflight-chip { position: fixed; display: none; background: #1e1e2e; color: #f9e2af; border: 1px solid #45475a; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .popup { position: fixed; display: none; flex-direction: column; width: 380px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: auto; }
 .popup-header { padding: 10px 12px 6px; border-bottom: 1px solid #45475a; }
+.popup-count { display: none; color: #a6adc8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
 .popup-label { font-weight: 600; }
 .popup-hint { color: #a6adc8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .popup-editor-btn { margin-top: 4px; background: none; border: 1px solid #45475a; color: #cba6f7; border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
@@ -158,6 +166,8 @@ function boot(): void {
 
     const header = document.createElement('div')
     header.className = 'popup-header'
+    const countEl = document.createElement('div')
+    countEl.className = 'popup-count'
     const labelEl = document.createElement('div')
     labelEl.className = 'popup-label'
     const hintEl = document.createElement('div')
@@ -166,7 +176,7 @@ function boot(): void {
     editorBtn.type = 'button'
     editorBtn.className = 'popup-editor-btn'
     editorBtn.textContent = 'Open in editor'
-    header.append(labelEl, hintEl, editorBtn)
+    header.append(countEl, labelEl, hintEl, editorBtn)
 
     const textarea = document.createElement('textarea')
     textarea.placeholder = 'What should change?'
@@ -212,6 +222,12 @@ function boot(): void {
     let hoveredEl: Element | null = null
     let pickedEl: Element | null = null
     let pickedInfo: ElementInfo | null = null
+    // Elements added via shift+click while picking, in selection order; a
+    // plain click appends its own target and becomes the primary (index 0)
+    // when the selection was empty, or the last extra otherwise
+    let selection: Element[] = []
+    let extrasInfo: ElementInfo[] = []
+    let multiBoxes: HTMLDivElement[] = []
     let lastPointerX = 0
     let lastPointerY = 0
     let prevFocus: Element | null = null
@@ -263,6 +279,57 @@ function boot(): void {
         return
       }
       drawOutlineAt(el)
+    }
+
+    // --- multi-selection outlines -----------------------------------------------------
+    // One persistent numbered box per element in `selection`, independent of
+    // the ephemeral hover outline above. Rebuilt whenever the selection changes.
+
+    function positionMultiBoxes(): void {
+      for (const [i, box] of multiBoxes.entries()) {
+        const el = selection[i]
+        if (el === undefined || !el.isConnected) {
+          box.style.display = 'none'
+          continue
+        }
+        const rect = el.getBoundingClientRect()
+        box.style.display = 'block'
+        box.style.left = `${rect.left}px`
+        box.style.top = `${rect.top}px`
+        box.style.width = `${rect.width}px`
+        box.style.height = `${rect.height}px`
+      }
+    }
+
+    function renderMultiBoxes(): void {
+      for (const box of multiBoxes) box.remove()
+      multiBoxes = selection.map((_el, i) => {
+        const box = document.createElement('div')
+        box.className = 'multi'
+        const badge = document.createElement('span')
+        badge.className = 'multi-badge'
+        badge.textContent = String(i + 1)
+        box.appendChild(badge)
+        shadow.appendChild(box)
+        return box
+      })
+      positionMultiBoxes()
+    }
+
+    function clearSelection(): void {
+      selection = []
+      for (const box of multiBoxes) box.remove()
+      multiBoxes = []
+    }
+
+    function addToSelection(el: Element): void {
+      if (selection.includes(el)) return
+      if (selection.length >= MAX_SELECTION) {
+        showToast('Up to 5 elements')
+        return
+      }
+      selection.push(el)
+      renderMultiBoxes()
     }
 
     // --- in-flight outline -----------------------------------------------------
@@ -434,6 +501,7 @@ function boot(): void {
       restoreCursor()
       clearOutline()
       hoveredEl = null
+      clearSelection()
     }
 
     function close(): void {
@@ -442,6 +510,8 @@ function boot(): void {
       hoveredEl = null
       pickedEl = null
       pickedInfo = null
+      extrasInfo = []
+      clearSelection()
       restoreCursor()
       if (prevFocus instanceof HTMLElement) prevFocus.focus()
       prevFocus = null
@@ -657,6 +727,10 @@ function boot(): void {
     function openPopup(x: number, y: number): void {
       if (pickedEl === null || pickedInfo === null) return
 
+      const total = 1 + extrasInfo.length
+      countEl.textContent = total > 1 ? `${total} elements` : ''
+      countEl.style.display = total > 1 ? 'block' : 'none'
+
       labelEl.textContent = elementLabel(pickedEl)
       hintEl.textContent = pickedInfo.hint ?? ''
       hintEl.style.display = pickedInfo.hint !== null ? '' : 'none'
@@ -679,8 +753,22 @@ function boot(): void {
     }
 
     function pick(el: Element, x: number, y: number): void {
-      pickedEl = el
-      pickedInfo = describeElement(el, { maxDepth: options.maxDepth, maxLines: options.maxLines })
+      // A click always finalizes the selection: it appends its own target
+      // (when there's room) if a multi-selection is already in progress,
+      // or is the normal single pick when the selection was empty
+      if (selection.length > 0) {
+        if (selection.length < MAX_SELECTION && !selection.includes(el)) selection.push(el)
+        renderMultiBoxes()
+      }
+      const combined = selection.length > 0 ? selection : [el]
+      const primary = combined[0] ?? el
+      const extraEls = combined.slice(1)
+
+      const describeOpts = { maxDepth: options.maxDepth, maxLines: options.maxLines }
+      pickedEl = primary
+      pickedInfo = describeElement(primary, describeOpts)
+      extrasInfo = extraEls.map((e) => describeElement(e, describeOpts))
+
       prevFocus = document.activeElement
       drawOutlineAt(el)
       restoreCursor()
@@ -705,7 +793,7 @@ function boot(): void {
 
       const clipboardMode = currentStateResponse === null || currentStateResponse.herdr === false
       if (clipboardMode) {
-        await copyText(composePrompt(pickedInfo, prompt))
+        await copyText(composePrompt(pickedInfo, prompt, { extras: extrasInfo }))
         showToast('Prompt copied to clipboard')
         close()
         return
@@ -718,7 +806,12 @@ function boot(): void {
 
       const target = selectedPaneId
       mode = 'sending'
-      const body: PromptRequest = { target, prompt, element: pickedInfo }
+      const body: PromptRequest = {
+        target,
+        prompt,
+        element: pickedInfo,
+        ...(extrasInfo.length > 0 ? { extras: extrasInfo } : {}),
+      }
 
       try {
         const res = await fetch(apiUrl('prompt'), {
@@ -760,11 +853,11 @@ function boot(): void {
           return
         }
 
-        await copyText(composePrompt(pickedInfo, prompt))
+        await copyText(composePrompt(pickedInfo, prompt, { extras: extrasInfo }))
         showToast('herdr unreachable, prompt copied to clipboard', true)
         close()
       } catch {
-        await copyText(composePrompt(pickedInfo, prompt))
+        await copyText(composePrompt(pickedInfo, prompt, { extras: extrasInfo }))
         showToast('herdr unreachable, prompt copied to clipboard', true)
         close()
       }
@@ -851,6 +944,7 @@ function boot(): void {
     function onScrollOrResize(): void {
       refreshHover()
       positionInflight()
+      positionMultiBoxes()
     }
 
     window.addEventListener('scroll', onScrollOrResize, true)
@@ -874,6 +968,12 @@ function boot(): void {
         e.stopPropagation()
         const el = deepElementFromPoint(e.clientX, e.clientY, host)
         if (el === null) return
+
+        if (e.shiftKey) {
+          addToSelection(el)
+          return
+        }
+
         pick(el, e.clientX, e.clientY)
       },
       true,
@@ -894,6 +994,7 @@ function boot(): void {
       pick: (el, x, y) => pick(el, x, y),
       close: () => close(),
       inflight: () => inflightPaneId,
+      selection: () => selection.map((el) => selectorPath(el)),
     }
   }
 
