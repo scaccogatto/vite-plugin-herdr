@@ -164,6 +164,18 @@ export function sourceHint(el: Element): string | null {
   return null
 }
 
+/** Strip the trailing ` (source)` / ` (source, ancestor)` parenthetical `sourceHint` appends, for display; the full hint stays available separately (e.g. in a `title` attribute) */
+export function stripHintSuffix(hint: string): string {
+  return hint.replace(/ \([^()]*\)$/, '')
+}
+
+/** `in a › b › c` for the ancestors of a `selectorPath` output (segments joined by ` > ` or ` >>> `), dropping the last (picked) segment; `null` when there are no ancestors */
+export function popupPathLabel(path: string): string | null {
+  const segments = path.split(/ > | >>> /).filter((s) => s.length > 0)
+  if (segments.length <= 1) return null
+  return `in ${segments.slice(0, -1).join(' › ')}`
+}
+
 const ID_RE = /^[A-Za-z_][\w-]*$/
 const CLASS_RE = /^[a-z_-][\w-]*$/i
 

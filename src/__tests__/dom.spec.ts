@@ -11,6 +11,8 @@ import {
   trimHtml,
   styleSummary,
   describeElement,
+  stripHintSuffix,
+  popupPathLabel,
 } from '../client/dom.ts'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -430,6 +432,38 @@ describe('styleSummary', () => {
 
     div.setAttribute('style', 'overflow:hidden')
     expect(styleSummary(div).overflow).toBe('hidden')
+  })
+})
+
+describe('stripHintSuffix', () => {
+  it('strips a single-word parenthetical', () => {
+    expect(stripHintSuffix('demo/Bench.vue:11:7 (data-v-inspector)')).toBe('demo/Bench.vue:11:7')
+  })
+
+  it('strips a parenthetical with an ancestor suffix', () => {
+    expect(stripHintSuffix('demo/Bench.vue:11:7 (data-v-inspector, ancestor)')).toBe('demo/Bench.vue:11:7')
+  })
+
+  it('strips a vue-component parenthetical', () => {
+    expect(stripHintSuffix('src/Foo.vue (vue component Foo)')).toBe('src/Foo.vue')
+  })
+
+  it('leaves a hint with no trailing parenthetical unchanged', () => {
+    expect(stripHintSuffix('src/Foo.vue:3:1')).toBe('src/Foo.vue:3:1')
+  })
+})
+
+describe('popupPathLabel', () => {
+  it('joins ancestors with the display separator and drops the picked segment', () => {
+    expect(popupPathLabel('main > section.task-section > button#task-label')).toBe('in main › section.task-section')
+  })
+
+  it('returns null for a single-segment path (no ancestors)', () => {
+    expect(popupPathLabel('button#task-label')).toBeNull()
+  })
+
+  it('normalizes a shadow-crossing separator to the same display separator', () => {
+    expect(popupPathLabel('div.host >>> section >>> button#task-label')).toBe('in div.host › section')
   })
 })
 

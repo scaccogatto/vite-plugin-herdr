@@ -58,9 +58,13 @@ export function assertExplicitSocketPath(socketPath: string | undefined): assert
  * (rendered as an aria-selected option) before the caller sends a prompt in
  * live-herdr mode: pressing Enter before this resolves can race ahead of it,
  * and the client falls back to clipboard mode instead of posting /prompt.
+ * The selected option sits inside the collapsed (hidden) groups wrapper by
+ * default, so this only asserts it is attached, not visible; callers that
+ * need the To row itself can additionally check that.
  */
 export async function waitForPreselectedAgent(page: Page): Promise<void> {
-  await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toBeVisible()
+  await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toBeAttached()
+  await expect(page.locator('[data-herdr-host] .to-row')).not.toBeEmpty()
 }
 
 /**

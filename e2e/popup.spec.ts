@@ -121,6 +121,7 @@ test.describe('popup interactions', () => {
     await pickTask(page, 'label')
     await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
     await waitForPreselectedAgent(page)
+    await page.keyboard.press('ArrowDown') // the list starts collapsed; expand it first
     await page.locator('[data-herdr-host] [role="option"]', { hasText: 'Long task' }).click()
 
     await page.route('**/__herdr/prompt', async (route) => {
@@ -134,5 +135,175 @@ test.describe('popup interactions', () => {
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('waiting at a dialog')
     await expect(dialog).not.toHaveClass(/sending/)
     await expect(page.locator('[data-herdr-host] textarea')).toBeFocused()
+  })
+
+  test('the To field shows the preselected agent with its status and the list starts collapsed', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+
+    const toRow = page.locator('[data-herdr-host] .to-row')
+    await expect(toRow).toContainText('Settings polish')
+    await expect(toRow).toContainText('idle')
+    await expect(toRow).toContainText('main')
+    await expect(toRow).toContainText('w1:p2')
+    await expect(toRow).toHaveAttribute('aria-expanded', 'false')
+
+    await expect(page.locator('[data-herdr-host] .agents-groups')).toBeHidden()
+    await expect(page.locator('[data-herdr-host] [role="listbox"]')).toBeVisible()
+  })
+
+  test('the spawn rows are visible while collapsed', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+
+    const here = page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' })
+    const worktree = page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent in worktree' })
+    await expect(here).toBeVisible()
+    await expect(worktree).toBeVisible()
+    await expect(here.locator('.spawn-hint')).toHaveText('split pane')
+    await expect(worktree.locator('.spawn-hint')).toHaveText('new worktree')
+  })
+
+  test('Down expands the list without moving, then moves and the To field mirrors it', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+
+    const toRow = page.locator('[data-herdr-host] .to-row')
+
+    await page.keyboard.press('ArrowDown')
+    await expect(toRow).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.locator('[data-herdr-host] .agents-groups')).toBeVisible()
+    await expect(toRow).toContainText('Settings polish')
+
+    await page.keyboard.press('ArrowDown')
+    await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toContainText('Long task')
+    await expect(toRow).toContainText('Long task')
+    await expect(toRow).toContainText('working')
+
+    await page.keyboard.press('ArrowUp')
+    await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toContainText('Settings polish')
+    await expect(toRow).toContainText('Settings polish')
+    await expect(toRow).toContainText('idle')
+  })
+
+  test('clicking the To field toggles the list', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+
+    const toRow = page.locator('[data-herdr-host] .to-row')
+    const groups = page.locator('[data-herdr-host] .agents-groups')
+
+    await toRow.click()
+    await expect(toRow).toHaveAttribute('aria-expanded', 'true')
+    await expect(groups).toBeVisible()
+
+    await toRow.click()
+    await expect(toRow).toHaveAttribute('aria-expanded', 'false')
+    await expect(groups).toBeHidden()
+
+    await toRow.click()
+    await expect(groups).toBeVisible()
+    await page.locator('[data-herdr-host] textarea').fill('typing should not collapse the list')
+    await expect(groups).toBeVisible()
+  })
+
+  test('Enter on a spawn row with an empty prompt flashes invalid and spawns nothing', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+
+    await page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' }).click()
+    await page.keyboard.press('Enter')
+
+    await expect(page.locator('[data-herdr-host] textarea')).toHaveClass(/invalid/)
+    expect(demo.received()).toEqual([])
+    await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeVisible()
+  })
+
+  test('clipboard mode shows Copy', async ({ context, page }) => {
+    const clipboardDemo = await startDemo({ snapshot: null })
+    try {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+      await page.goto(`${clipboardDemo.url}#bench`)
+      await arm(page)
+      await pickTask(page, 'label')
+
+      await expect(page.locator('[data-herdr-host] .send-btn')).toHaveText('Copy')
+      await expect(page.locator('[data-herdr-host] .agents-notice')).toBeVisible()
+      await expect(page.locator('[data-herdr-host] .spawn-row')).toHaveCount(0)
+    } finally {
+      await clipboardDemo.close()
+    }
+  })
+
+  test('blocked settle shows the chip', async ({ context, page }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+    await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+    await page.keyboard.press('Enter')
+
+    await expect.poll(() => page.evaluate(() => window.__herdr?.inflight())).toBe('w1:p2')
+    await expect.poll(() => demo.fake!.subscriptionOpen()).toBe(true)
+    demo.fake!.pushEvent({
+      event: 'pane.agent_status_changed',
+      data: { pane_id: 'w1:p2', workspace_id: 'w1', agent_status: 'working', title: 'Settings polish' },
+    })
+    demo.fake!.pushEvent({
+      event: 'pane.agent_status_changed',
+      data: { pane_id: 'w1:p2', workspace_id: 'w1', agent_status: 'blocked', title: 'Settings polish' },
+    })
+
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toHaveClass(/blocked/)
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toContainText('blocked')
+    await expect(page.locator('[data-herdr-host] .inflight')).toHaveClass(/blocked/)
+  })
+
+  test('narrow viewport hides the esc hint and the branch column, keeps Send visible', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 })
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+    await page.keyboard.press('ArrowDown') // expand so an agent row is on screen too
+
+    await expect(page.locator('[data-herdr-host] .key-esc')).toBeHidden()
+    await expect(page.locator('[data-herdr-host] .to-branch')).toBeHidden()
+    const agentBranch = page.locator('[data-herdr-host] .agent-branch').first()
+    await expect(agentBranch).toBeHidden()
+
+    const popupBox = await page.locator('[data-herdr-host] .popup').boundingBox()
+    const sendBox = await page.locator('[data-herdr-host] .send-btn').boundingBox()
+    expect(popupBox).not.toBeNull()
+    expect(sendBox).not.toBeNull()
+    await expect(page.locator('[data-herdr-host] .send-btn')).toBeVisible()
+    expect(sendBox!.x).toBeGreaterThanOrEqual(popupBox!.x)
+    expect(sendBox!.x + sendBox!.width).toBeLessThanOrEqual(popupBox!.x + popupBox!.width + 1)
+  })
+
+  test('no text under 12px except pane ids', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+    await page.keyboard.press('ArrowDown') // expand the list so agent/spawn rows are measured too
+
+    const small = await page.evaluate(() => {
+      const popup = document.querySelector('[data-herdr-host]')?.shadowRoot?.querySelector('.popup')
+      if (popup === null || popup === undefined) return ['popup not found']
+      const out: string[] = []
+      for (const el of popup.querySelectorAll<HTMLElement>('*')) {
+        if ((el.textContent ?? '').trim().length === 0 && el.tagName !== 'TEXTAREA') continue
+        const fontSize = parseFloat(getComputedStyle(el).fontSize)
+        if (fontSize < 12 && !el.classList.contains('agent-pane') && !el.classList.contains('to-pane')) {
+          out.push(`${el.className || el.tagName} ${fontSize}px`)
+        }
+      }
+      return out
+    })
+    expect(small).toEqual([])
   })
 })
