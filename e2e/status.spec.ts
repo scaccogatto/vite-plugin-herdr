@@ -272,10 +272,7 @@ test.describe('spawn buttons', () => {
       await waitForPreselectedAgent(page)
 
       const before = demo.received().length
-      let routeFulfilled: () => void
-      const fulfilled = new Promise<void>((resolve) => {
-        routeFulfilled = resolve
-      })
+      const snapshotsBefore = demo.raw().filter((r) => r.method === 'session.snapshot').length
       await page.route('**/__herdr/spawn', async (route) => {
         await new Promise((r) => setTimeout(r, 400))
         await route.fulfill({
@@ -283,7 +280,6 @@ test.describe('spawn buttons', () => {
           contentType: 'application/json',
           body: JSON.stringify({ ok: true, pane_id: 'w1:p9', name: 'x', workspace_id: 'w1' }),
         })
-        routeFulfilled()
       })
 
       await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
@@ -297,9 +293,14 @@ test.describe('spawn buttons', () => {
       await page.keyboard.press('Escape')
       await expect(dialog).toBeHidden()
 
-      // Let the delayed /spawn response land and its continuation (guarded
-      // by sendSeq) run to completion before asserting nothing was sent.
-      await fulfilled
+      // The delayed /spawn response lands regardless of Escape, and its own
+      // success path always reloads the agent list (GET /state -> a fresh
+      // session.snapshot call) before the sendSeq guard is even checked;
+      // wait for that reload, the step immediately before the guard, rather
+      // than a fixed timeout, so this only asserts once the continuation has
+      // actually had its chance to (wrongly) send.
+      await expect.poll(() => demo.raw().filter((r) => r.method === 'session.snapshot').length).toBeGreaterThan(snapshotsBefore)
+      // ...then let the guarded continuation's own microtask tail finish.
       await page.waitForTimeout(50)
 
       expect(demo.received().length).toBe(before)
