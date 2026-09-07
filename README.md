@@ -62,6 +62,7 @@ Outside herdr the same popup composes the same prompt and copies it to the clipb
 | `Enter` | Send (or copy, without herdr) |
 | `Shift+Enter` | New line in the prompt |
 | `Esc` | Close the popup / disarm the picker |
+| `+ agent here` / `+ agent in worktree` | Start a new agent (split pane, or a fresh worktree) and select it |
 
 ## Configuration
 
@@ -126,6 +127,8 @@ Whether a real screenshot is worth adding to this payload is decided by a pre-re
 [agent pane: Claude Code, Codex, …]
 ```
 
+A sent prompt leaves a dashed in-flight outline on the picked element until the agent settles. The dev server watches the target pane after a send and pushes `herdr:status` events over Vite's HMR socket (falling back to polling `/state` when HMR is unavailable, e.g. a dev server started with `server.hmr: false`); a `working` update keeps the outline, `idle`/`done` flashes it green then clears it with a "finished" toast, and `blocked` turns it red with a toast asking you to go answer the agent in herdr.
+
 Agent preselection, in order:
 
 1. The last agent used from this origin (`localStorage['herdr:last']`, matched by pane id and session id).
@@ -178,9 +181,7 @@ For plain Vite SPA/MPA apps, `transformIndexHtml` injection (the default) is the
 ## Roadmap
 
 - Real-pixel screenshot, opt-in, only if the benchmark promotes it
-- In-flight outline on the picked element, cleared when the agent reports idle/done
 - Multi-select with one shared comment
-- Start a new agent for this workspace, or in a fresh worktree, from the popup
 - Nuxt and other meta-framework injection
 - Chrome extension for pages you don't serve
 

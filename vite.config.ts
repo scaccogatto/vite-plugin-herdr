@@ -4,6 +4,10 @@ import dts from 'vite-plugin-dts'
 export default defineConfig(({ mode }) => {
   if (mode === 'client') {
     return {
+      // Vite replaces import.meta.hot with undefined in library builds; this
+      // define keeps the expression itself in dist/client.js so the consumer's
+      // own dev server can inject its HMR context when it transforms the file.
+      define: { 'import.meta.hot': 'import.meta.hot' },
       build: {
         lib: {
           entry: 'src/client/index.ts',

@@ -138,6 +138,16 @@ export function sourceHint(el: Element): string | null {
     }
   }
 
+  // vite-plugin-vue-inspector's default cleanHtml:true strips the
+  // data-v-inspector attribute after stamping it, leaving the value only on
+  // the vnode's props (a non-enumerable prop set by the framework, not by us)
+  for (let node: Element | null = el; node !== null && node !== document.body; node = node.parentElement) {
+    const value = readProp(readProp(readProp(node, '__vnode'), 'props'), '__v_inspector')
+    if (typeof value === 'string' && value.length > 0) {
+      return node === el ? `${value} (data-v-inspector)` : `${value} (data-v-inspector, ancestor)`
+    }
+  }
+
   for (let node: Element | null = el; node !== null && node !== document.body; node = node.parentElement) {
     const hint = vueHint(node)
     if (hint !== null) return hint

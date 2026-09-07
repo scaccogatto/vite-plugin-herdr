@@ -1,15 +1,27 @@
-import type { AgentRow, ClientOptions, ElementInfo, ErrorResponse, PromptRequest, PromptResponse, StateResponse } from '../types.ts'
+/// <reference types="vite/client" />
+import type {
+  AgentRow,
+  ClientOptions,
+  ElementInfo,
+  ErrorResponse,
+  PromptRequest,
+  PromptResponse,
+  SpawnResponse,
+  StateResponse,
+} from '../types.ts'
 import { composePrompt } from '../compose.ts'
 import { HOST_ATTR, deepElementFromPoint, describeElement, matchesHotkey, parseHotkey, sourceHint } from './dom.ts'
 import { groupAgents, pickAgent, selectableIds } from './agents.ts'
 
-/// Debug/bench API exposed on window.__herdr
+/** Debug/bench API exposed on window.__herdr */
 export interface HerdrApi {
   version: string
   describe(el: Element): ElementInfo
   outline(el: Element | null): void
   pick(el: Element, x: number, y: number): void
   close(): void
+  /** The pane id currently shown in-flight, or null */
+  inflight(): string | null
 }
 
 declare global {
@@ -66,6 +78,8 @@ const STYLE = `
 * { box-sizing: border-box; }
 .outline { position: fixed; display: none; border: 2px solid #cba6f7; background: rgba(203, 166, 247, 0.12); pointer-events: none; }
 .chip { position: fixed; display: none; background: #1e1e2e; color: #cba6f7; border: 1px solid #45475a; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
+.inflight { position: fixed; display: none; border: 2px dashed #f9e2af; background: rgba(249, 226, 175, 0.12); pointer-events: none; transition: border-color 0.2s, background-color 0.2s; }
+.inflight-chip { position: fixed; display: none; background: #1e1e2e; color: #f9e2af; border: 1px solid #45475a; border-radius: 4px; padding: 2px 6px; font-size: 11px; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .popup { position: fixed; display: none; flex-direction: column; width: 380px; background: #1e1e2e; color: #cdd6f4; border: 1px solid #45475a; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: auto; }
 .popup-header { padding: 10px 12px 6px; border-bottom: 1px solid #45475a; }
 .popup-label { font-weight: 600; }
@@ -73,6 +87,9 @@ const STYLE = `
 .popup-editor-btn { margin-top: 4px; background: none; border: 1px solid #45475a; color: #cba6f7; border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
 .popup textarea { display: block; width: calc(100% - 24px); margin: 8px 12px; padding: 6px 8px; background: #181825; color: #cdd6f4; border: 1px solid #45475a; border-radius: 6px; font: inherit; resize: vertical; }
 .popup textarea.invalid { border-color: #f38ba8; }
+.spawn-area { display: flex; gap: 6px; margin: 0 12px 8px; }
+.spawn-btn { flex: 1; background: none; border: 1px solid #45475a; color: #cba6f7; border-radius: 4px; padding: 4px 6px; font-size: 11px; cursor: pointer; }
+.spawn-btn:disabled { opacity: 0.5; cursor: default; }
 .agents-area { max-height: 220px; overflow-y: auto; margin: 0 12px; border-top: 1px solid #45475a; }
 .agents-notice { padding: 8px 0; color: #a6adc8; font-size: 12px; }
 .agents-group-heading { padding: 6px 0 2px; color: #a6adc8; font-size: 11px; text-transform: uppercase; }
@@ -128,6 +145,12 @@ function boot(): void {
     const chip = document.createElement('div')
     chip.className = 'chip'
 
+    const inflightBox = document.createElement('div')
+    inflightBox.className = 'inflight'
+
+    const inflightChip = document.createElement('div')
+    inflightChip.className = 'inflight-chip'
+
     const popup = document.createElement('div')
     popup.className = 'popup'
     popup.setAttribute('role', 'dialog')
@@ -150,6 +173,22 @@ function boot(): void {
     textarea.rows = 3
     textarea.maxLength = 4000
 
+    const spawnArea = document.createElement('div')
+    spawnArea.className = 'spawn-area'
+    spawnArea.style.display = 'none'
+
+    const spawnHereBtn = document.createElement('button')
+    spawnHereBtn.type = 'button'
+    spawnHereBtn.className = 'spawn-btn'
+    spawnHereBtn.textContent = '+ agent here'
+
+    const spawnWorktreeBtn = document.createElement('button')
+    spawnWorktreeBtn.type = 'button'
+    spawnWorktreeBtn.className = 'spawn-btn'
+    spawnWorktreeBtn.textContent = '+ agent in worktree'
+
+    spawnArea.append(spawnHereBtn, spawnWorktreeBtn)
+
     const agentsArea = document.createElement('div')
     agentsArea.className = 'agents-area'
     agentsArea.setAttribute('role', 'listbox')
@@ -158,14 +197,14 @@ function boot(): void {
     footer.className = 'popup-footer'
     footer.textContent = 'Enter send · Shift+Enter newline · ↑↓ agent · Esc close'
 
-    popup.append(header, textarea, agentsArea, footer)
+    popup.append(header, textarea, spawnArea, agentsArea, footer)
 
     const toast = document.createElement('div')
     toast.className = 'toast'
     toast.setAttribute('role', 'status')
     toast.setAttribute('aria-live', 'polite')
 
-    shadow.append(outline, chip, popup, toast)
+    shadow.append(outline, chip, inflightBox, inflightChip, popup, toast)
 
     // --- mutable UI state -------------------------------------------------
 
@@ -183,6 +222,12 @@ function boot(): void {
     let currentStateResponse: StateResponse | null = null
     let selectableAgentIds: string[] = []
     let selectedPaneId: string | null = null
+
+    let inflightPaneId: string | null = null
+    let inflightTitle: string | null = null
+    let inflightEl: Element | null = null
+    let inflightSettleTimer: ReturnType<typeof setTimeout> | undefined
+    let inflightPollTimer: ReturnType<typeof setInterval> | undefined
 
     // --- outline + chip -----------------------------------------------------
 
@@ -218,6 +263,158 @@ function boot(): void {
         return
       }
       drawOutlineAt(el)
+    }
+
+    // --- in-flight outline -----------------------------------------------------
+    // Independent of the hover outline above: it marks a picked element whose
+    // prompt was sent, and stays until the target agent settles.
+
+    function inflightLabel(): string {
+      return inflightTitle ?? inflightPaneId ?? ''
+    }
+
+    function renderInflightChip(): void {
+      inflightChip.textContent = `→ ${inflightLabel()} · working…`
+    }
+
+    function positionInflight(): void {
+      if (inflightEl === null) return
+      // isConnected (not document.contains) so a shadow-DOM-hosted picked
+      // element (deepElementFromPoint supports those) isn't wrongly cleared
+      if (!inflightEl.isConnected) {
+        clearInflight()
+        return
+      }
+      const rect = inflightEl.getBoundingClientRect()
+      inflightBox.style.left = `${rect.left}px`
+      inflightBox.style.top = `${rect.top}px`
+      inflightBox.style.width = `${rect.width}px`
+      inflightBox.style.height = `${rect.height}px`
+
+      const chipRect = inflightChip.getBoundingClientRect()
+      const touchesTop = rect.top <= 0
+      inflightChip.style.left = `${rect.left}px`
+      inflightChip.style.top = touchesTop ? `${rect.bottom + 4}px` : `${rect.top - chipRect.height - 4}px`
+    }
+
+    function stopInflightPoll(): void {
+      if (inflightPollTimer === undefined) return
+      clearInterval(inflightPollTimer)
+      inflightPollTimer = undefined
+    }
+
+    function clearInflight(): void {
+      inflightPaneId = null
+      inflightTitle = null
+      inflightEl = null
+      inflightBox.style.display = 'none'
+      inflightBox.style.borderColor = ''
+      inflightChip.style.display = 'none'
+      if (inflightSettleTimer !== undefined) {
+        clearTimeout(inflightSettleTimer)
+        inflightSettleTimer = undefined
+      }
+      stopInflightPoll()
+    }
+
+    function settleInflightFinished(): void {
+      const label = inflightLabel()
+      inflightBox.style.borderColor = '#a6e3a1'
+      inflightChip.style.display = 'none'
+      stopInflightPoll()
+      if (inflightSettleTimer !== undefined) clearTimeout(inflightSettleTimer)
+      inflightSettleTimer = setTimeout(() => {
+        showToast(`${label} finished`)
+        clearInflight()
+      }, 1200)
+    }
+
+    function settleInflightBlocked(): void {
+      const label = inflightLabel()
+      inflightBox.style.borderColor = '#f38ba8'
+      inflightChip.style.display = 'none'
+      stopInflightPoll()
+      showToast(`${label} is waiting for you in herdr`)
+      if (inflightSettleTimer !== undefined) clearTimeout(inflightSettleTimer)
+      inflightSettleTimer = setTimeout(() => clearInflight(), 3000)
+    }
+
+    // Fallback for consumers without HMR (import.meta.hot undefined): poll
+    // state and derive the same working -> settled transition a herdr:status
+    // event would have given us.
+    function startInflightPoll(paneId: string): void {
+      const startedAt = Date.now()
+      let sawWorking = false
+
+      inflightPollTimer = setInterval(() => {
+        if (inflightPaneId !== paneId || Date.now() - startedAt > 30 * 60 * 1000) {
+          stopInflightPoll()
+          return
+        }
+        void (async () => {
+          try {
+            const res = await fetch(apiUrl('state'), { credentials: 'same-origin' })
+            const data = (await res.json()) as StateResponse
+            if (inflightPaneId !== paneId || !data.herdr) return
+            const row = data.agents.find((a) => a.pane_id === paneId)
+            if (row === undefined) return
+            if (row.title !== null) inflightTitle = row.title
+
+            if (row.agent_status === 'working') {
+              sawWorking = true
+              renderInflightChip()
+              return
+            }
+            const settled = row.agent_status === 'idle' || row.agent_status === 'done' || row.agent_status === 'blocked'
+            if (!settled || (!sawWorking && Date.now() - startedAt < 5000)) return
+
+            if (row.agent_status === 'blocked') settleInflightBlocked()
+            else settleInflightFinished()
+          } catch {
+            // network hiccup: try again next tick
+          }
+        })()
+      }, 2000)
+    }
+
+    function startInflight(paneId: string, title: string | null, el: Element): void {
+      stopInflightPoll()
+      if (inflightSettleTimer !== undefined) {
+        clearTimeout(inflightSettleTimer)
+        inflightSettleTimer = undefined
+      }
+      inflightPaneId = paneId
+      inflightTitle = title
+      inflightEl = el
+      inflightBox.style.borderColor = ''
+      inflightBox.style.display = 'block'
+      renderInflightChip()
+      inflightChip.style.display = 'block'
+      positionInflight()
+      if (!import.meta.hot) startInflightPoll(paneId)
+    }
+
+    function handleStatusEvent(event: { pane_id: string; agent_status: string; title: string | null }): void {
+      if (event.pane_id !== inflightPaneId) return
+      if (event.title !== null) inflightTitle = event.title
+
+      if (event.agent_status === 'working') {
+        renderInflightChip()
+        return
+      }
+      if (event.agent_status === 'blocked') {
+        settleInflightBlocked()
+        return
+      }
+      // idle/done settle; unknown (matching the poll fallback and the
+      // server's own watchAgent, which also keeps watching on unknown) does not
+      if (event.agent_status === 'idle' || event.agent_status === 'done') settleInflightFinished()
+    }
+
+    if (import.meta.hot) {
+      import.meta.hot.on('herdr:status', (event: { pane_id: string; agent_status: string; title: string | null }) => {
+        handleStatusEvent(event)
+      })
     }
 
     // --- mode transitions -----------------------------------------------------
@@ -291,12 +488,16 @@ function boot(): void {
 
     // --- agents list -----------------------------------------------------
 
-    function showAgentsLoading(): void {
+    function showAgentsNotice(text: string): void {
       agentsArea.innerHTML = ''
       const notice = document.createElement('div')
       notice.className = 'agents-notice'
-      notice.textContent = 'loading agents...'
+      notice.textContent = text
       agentsArea.appendChild(notice)
+    }
+
+    function showAgentsLoading(): void {
+      showAgentsNotice('loading agents...')
     }
 
     function updateSelection(): void {
@@ -346,6 +547,7 @@ function boot(): void {
     function renderAgents(state: StateResponse): void {
       currentStateResponse = state
       agentsArea.innerHTML = ''
+      spawnArea.style.display = state.herdr ? 'flex' : 'none'
 
       if (!state.herdr) {
         selectableAgentIds = []
@@ -387,6 +589,46 @@ function boot(): void {
       }
     }
 
+    async function requestSpawn(mode: 'here' | 'worktree'): Promise<void> {
+      spawnHereBtn.disabled = true
+      spawnWorktreeBtn.disabled = true
+      showAgentsNotice('starting agent…')
+
+      try {
+        const res = await fetch(apiUrl('spawn'), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ mode }),
+        })
+
+        if (res.status === 200) {
+          const data = (await res.json()) as SpawnResponse
+          pickToken += 1
+          await loadAgents(pickToken)
+          selectedPaneId = data.pane_id
+          updateSelection()
+          showToast(`Started ${data.name}`)
+          return
+        }
+
+        const err = (await res.json()) as ErrorResponse
+        showToast(err.message, true)
+        pickToken += 1
+        await loadAgents(pickToken)
+      } catch {
+        showToast('could not reach the dev server', true)
+        pickToken += 1
+        await loadAgents(pickToken)
+      } finally {
+        spawnHereBtn.disabled = false
+        spawnWorktreeBtn.disabled = false
+      }
+    }
+
+    spawnHereBtn.addEventListener('click', () => void requestSpawn('here'))
+    spawnWorktreeBtn.addEventListener('click', () => void requestSpawn('worktree'))
+
     function moveSelection(delta: number): void {
       if (selectableAgentIds.length === 0) return
       const idx = selectedPaneId !== null ? selectableAgentIds.indexOf(selectedPaneId) : -1
@@ -426,6 +668,7 @@ function boot(): void {
       textarea.value = ''
       currentStateResponse = null
       selectedPaneId = null
+      spawnArea.style.display = 'none'
 
       popup.style.display = 'flex'
       positionPopup(x, y)
@@ -487,9 +730,12 @@ function boot(): void {
 
         if (res.status === 200) {
           const data = (await res.json()) as PromptResponse
+          const sentPaneId = data.pane_id ?? target
+          const sentEl = pickedEl
           showToast(`Sent to ${data.title ?? data.target}`)
           writeLast({ pane_id: target, session: findSession(target) })
           close()
+          if (sentEl !== null) startInflight(sentPaneId, data.title, sentEl)
           return
         }
 
@@ -602,8 +848,13 @@ function boot(): void {
       updateHover(lastPointerX, lastPointerY)
     }
 
-    window.addEventListener('scroll', refreshHover, true)
-    window.addEventListener('resize', refreshHover, true)
+    function onScrollOrResize(): void {
+      refreshHover()
+      positionInflight()
+    }
+
+    window.addEventListener('scroll', onScrollOrResize, true)
+    window.addEventListener('resize', onScrollOrResize, true)
 
     function blockInPicking(e: Event): void {
       if (mode !== 'picking') return
@@ -642,6 +893,7 @@ function boot(): void {
       },
       pick: (el, x, y) => pick(el, x, y),
       close: () => close(),
+      inflight: () => inflightPaneId,
     }
   }
 
