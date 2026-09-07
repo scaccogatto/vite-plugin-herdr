@@ -147,3 +147,22 @@ input {
 .card p {
   margin-bottom: 0;
 }
+
+.note {
+  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--accent);
+  background-color: var(--bg-secondary);
+  margin: 1rem 0;
+}
+
+.icon-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--text-primary);
+}

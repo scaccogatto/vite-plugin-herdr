@@ -1,0 +1,87 @@
+[
+  {
+    "id": "label",
+    "kind": "edit",
+    "selector": "#task-label",
+    "prompt": "typo, should say Submit",
+    "expectFile": "Bench.vue",
+    "expectContains": "Submit"
+  },
+  {
+    "id": "link",
+    "kind": "edit",
+    "selector": "#task-link",
+    "prompt": "point this to /team",
+    "expectFile": "Bench.vue",
+    "expectContains": "href=\"/team\""
+  },
+  {
+    "id": "aria",
+    "kind": "edit",
+    "selector": "#task-aria",
+    "prompt": "this icon button needs an accessible name, use Close",
+    "expectFile": "Bench.vue",
+    "expectContains": "aria-label"
+  },
+  {
+    "id": "color",
+    "kind": "edit",
+    "selector": "#task-color",
+    "prompt": "too light, use #222",
+    "expectFile": "Bench.vue",
+    "expectContains": "#222"
+  },
+  {
+    "id": "copy",
+    "kind": "edit",
+    "selector": "#task-copy",
+    "prompt": "replace the placeholder with: Your invoices are generated on the first day of each month.",
+    "expectFile": "Bench.vue",
+    "expectContains": "Your invoices are generated on the first day of each month."
+  },
+  {
+    "id": "align",
+    "kind": "visual",
+    "selector": "#task-align",
+    "prompt": "align this card with the other two",
+    "expectFile": "Bench.vue",
+    "expectContains": null,
+    "rubric": "The third card should be visually aligned with the first two cards at the same top position without extra margin-top."
+  },
+  {
+    "id": "spacing",
+    "kind": "visual",
+    "selector": "#task-spacing",
+    "prompt": "give these items the same breathing room as the rest of the page",
+    "expectFile": "Bench.vue",
+    "expectContains": null,
+    "rubric": "List items should have consistent spacing using 16px gap like other page elements, not the cramped 2px spacing."
+  },
+  {
+    "id": "overflow",
+    "kind": "visual",
+    "selector": "#task-overflow",
+    "prompt": "the text overflows the box, fix it",
+    "expectFile": "Bench.vue",
+    "expectContains": null,
+    "rubric": "The long word should wrap or be truncated to fit within the 200px width without overflowing visually."
+  },
+  {
+    "id": "font",
+    "kind": "visual",
+    "selector": "#task-font",
+    "prompt": "this heading is tiny, make it match the other section headings",
+    "expectFile": "Bench.vue",
+    "expectContains": null,
+    "rubric": "The heading should be sized at 1.25rem (20px equivalent) to match other h2 elements on the page."
+  },
+  {
+    "id": "hover",
+    "kind": "visual",
+    "selector": "#task-hover",
+    "prompt": "add a hover state consistent with the primary button",
+    "expectFile": "Bench.vue",
+    "expectContains": null,
+    "rubric": "The secondary button should have a visible hover state similar to the primary button's hover effect."
+  }
+]
