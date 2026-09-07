@@ -6,6 +6,7 @@ import { createServer, type ViteDevServer } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import inspector from 'vite-plugin-vue-inspector'
 import herdr from '../../src/index.ts'
+import type { Options } from '../../src/index.ts'
 import { startFakeHerdr, type FakeHerdr } from '../../src/__tests__/helpers/fake-herdr.ts'
 
 const demoRoot = fileURLToPath(new URL('../../demo', import.meta.url))
@@ -25,6 +26,8 @@ export interface StartDemoOptions {
   env?: Record<string, string>
   /** Additional fake herdr method handlers, merged over (and able to override) the defaults */
   handlers?: Record<string, (params: Record<string, unknown>) => unknown>
+  /** Additional herdr() plugin options, merged in (socketPath always comes from the fake, never from here) */
+  plugin?: Partial<Options>
 }
 
 export interface DemoServer {
@@ -84,7 +87,7 @@ export async function startDemo(opts: StartDemoOptions): Promise<DemoServer> {
     plugins: [
       vue(),
       inspector({ enabled: false, toggleButtonVisibility: 'never', toggleComboKey: false, cleanHtml: false }),
-      herdr({ socketPath }),
+      herdr({ ...opts.plugin, socketPath }),
     ],
   })
   await server.listen()

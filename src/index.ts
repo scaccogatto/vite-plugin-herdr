@@ -23,6 +23,18 @@ export interface Options {
    * the integration's `injectScript` instead of this option.
    */
   appendTo?: string | RegExp
+  /**
+   * Offers the real-pixel screenshot checkbox in the popup. `'auto'`
+   * (default) turns it on only on macOS (the only platform `screenshotCommand`
+   * currently supports); `true` forces it on, `false` turns it off.
+   */
+  screenshot?: boolean | 'auto'
+  /**
+   * Advanced: the command run to capture the screenshot, invoked as
+   * `<command> -x -R <x>,<y>,<w>,<h> <file>`. Defaults to macOS's own
+   * `screencapture`; override only to point at a test double.
+   */
+  screenshotCommand?: string
 }
 
 /** Resolved options with all defaults applied */
@@ -53,6 +65,8 @@ export function resolveOptions(options: Options): ResolvedOptions {
     enabled: true,
     socketPath: undefined,
     appendTo: undefined,
+    screenshot: 'auto',
+    screenshotCommand: 'screencapture',
     snippet: {
       maxDepth: 3,
       maxLines: 60,
@@ -114,6 +128,8 @@ export default function herdr(options: Options = {}): Plugin {
         endpoint: resolved.endpoint,
         socketPath: resolved.socketPath,
         inlineMaxChars: resolved.snippet.inlineMaxChars,
+        screenshot: resolved.screenshot,
+        screenshotCommand: resolved.screenshotCommand,
       })
     },
 

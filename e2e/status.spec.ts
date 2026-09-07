@@ -15,6 +15,11 @@ async function pickTask(page: Page, id: string): Promise<void> {
 }
 
 async function sendPrompt(page: Page): Promise<void> {
+  // Wait for the agent list's GET /state to resolve (a preselected agent
+  // shows up as an aria-selected option) before sending: otherwise Enter can
+  // race ahead of it and the client falls back to clipboard mode, which
+  // never posts /prompt at all - not the race this file exists to cover.
+  await expect(page.locator('[data-herdr-host] [role="option"][aria-selected="true"]')).toBeVisible()
   await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
   await page.keyboard.press('Enter')
 }
@@ -30,6 +35,15 @@ function subscribeCount(demo: DemoServer): number {
 // test's own send instead, so events push at the socket this test opened.
 async function waitForFreshSubscription(demo: DemoServer, before: number): Promise<void> {
   await expect.poll(() => subscribeCount(demo)).toBeGreaterThan(before)
+}
+
+// The client sets window.__herdr.inflight() synchronously, before the
+// /prompt fetch even leaves the browser, so events for that pane are never
+// dropped. Still wait for both this and waitForFreshSubscription before
+// pushing test events: the fake only forwards pushEvent() once its own
+// subscribe socket is live, regardless of client-side timing.
+async function waitForInflight(page: Page, paneId: string): Promise<void> {
+  await expect.poll(() => page.evaluate(() => window.__herdr?.inflight())).toBe(paneId)
 }
 
 test.describe('in-flight outline', () => {
@@ -55,8 +69,8 @@ test.describe('in-flight outline', () => {
     await sendPrompt(page)
 
     await expect(page.locator('[data-herdr-host] .inflight')).toBeVisible()
-    expect(await page.evaluate(() => window.__herdr?.inflight())).toBe('w1:p2')
 
+    await waitForInflight(page, 'w1:p2')
     await waitForFreshSubscription(demo, beforeSubscribe)
 
     demo.fake!.pushEvent({
@@ -79,6 +93,7 @@ test.describe('in-flight outline', () => {
     await pickTask(page, 'label')
     await sendPrompt(page)
 
+    await waitForInflight(page, 'w1:p2')
     await waitForFreshSubscription(demo, beforeSubscribe)
 
     demo.fake!.pushEvent({

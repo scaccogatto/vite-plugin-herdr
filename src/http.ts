@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
-import type { ElementInfo, PromptRequest } from './types.ts'
+import type { ElementInfo, PromptRequest, ScreenshotRequest } from './types.ts'
 
 /** Error raised by HTTP request handling, carrying the status code to send */
 export class HttpError extends Error {
@@ -113,6 +113,36 @@ export function validateElement(x: unknown): ElementInfo | null {
   }
 }
 
+/** Validates an untrusted value against the ScreenshotRequest shape, returning null when it does not match */
+function validateScreenshot(x: unknown): ScreenshotRequest | null {
+  if (!isPlainObject(x)) return null
+
+  const { rect, screenX, screenY, chromeLeft, chromeTop, dpr } = x
+
+  if (
+    !isPlainObject(rect) ||
+    !isFiniteNumber(rect.x) ||
+    !isFiniteNumber(rect.y) ||
+    !isFiniteNumber(rect.w) ||
+    !isFiniteNumber(rect.h)
+  ) {
+    return null
+  }
+
+  if (!isFiniteNumber(screenX) || !isFiniteNumber(screenY) || !isFiniteNumber(chromeLeft) || !isFiniteNumber(chromeTop) || !isFiniteNumber(dpr)) {
+    return null
+  }
+
+  return {
+    rect: { x: rect.x, y: rect.y, w: rect.w, h: rect.h },
+    screenX,
+    screenY,
+    chromeLeft,
+    chromeTop,
+    dpr,
+  }
+}
+
 /**
  * Validates an untrusted request body against the PromptRequest shape,
  * returning null (never throwing) when it does not match
@@ -120,7 +150,7 @@ export function validateElement(x: unknown): ElementInfo | null {
 export function validatePrompt(body: unknown): PromptRequest | null {
   if (!isPlainObject(body)) return null
 
-  const { target, prompt, element, extras } = body
+  const { target, prompt, element, extras, screenshot } = body
   if (typeof target !== 'string' || target.length === 0) return null
   if (typeof prompt !== 'string' || prompt.length > 20000) return null
 
@@ -139,6 +169,12 @@ export function validatePrompt(body: unknown): PromptRequest | null {
       validatedExtras.push(validatedItem)
     }
     result.extras = validatedExtras
+  }
+
+  if (screenshot !== undefined) {
+    const validatedScreenshot = validateScreenshot(screenshot)
+    if (validatedScreenshot === null) return null
+    result.screenshot = validatedScreenshot
   }
 
   return result

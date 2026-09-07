@@ -2,7 +2,7 @@ import { Readable } from 'node:stream'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import { describe, it, expect } from 'vitest'
 import { HttpError, isSameOrigin, readJson, sendJson, validatePrompt } from '../http.ts'
-import type { ElementInfo, PromptRequest } from '../types.ts'
+import type { ElementInfo, PromptRequest, ScreenshotRequest } from '../types.ts'
 
 function fixtureElement(overrides?: Partial<ElementInfo>): ElementInfo {
   return {
@@ -172,6 +172,45 @@ describe('validatePrompt', () => {
       const result = validatePrompt(fixtureBody())
       expect(result).not.toBeNull()
       expect(result?.extras).toBeUndefined()
+    })
+  })
+
+  describe('screenshot', () => {
+    function fixtureShot(overrides?: Partial<ScreenshotRequest>): ScreenshotRequest {
+      return {
+        rect: { x: 100, y: 200, w: 320, h: 40 },
+        screenX: 0,
+        screenY: 0,
+        chromeLeft: 0,
+        chromeTop: 80,
+        dpr: 2,
+        ...overrides,
+      }
+    }
+
+    it('accepts a valid screenshot object', () => {
+      const body = fixtureBody({ screenshot: fixtureShot() })
+      expect(validatePrompt(body)).toEqual(body)
+    })
+
+    it('omits screenshot from the result when not provided', () => {
+      const result = validatePrompt(fixtureBody())
+      expect(result).not.toBeNull()
+      expect(result?.screenshot).toBeUndefined()
+    })
+
+    it('rejects a non-finite top-level field', () => {
+      expect(validatePrompt(fixtureBody({ screenshot: fixtureShot({ dpr: NaN }) }))).toBeNull()
+      expect(validatePrompt(fixtureBody({ screenshot: fixtureShot({ screenX: 'x' as unknown as number }) }))).toBeNull()
+    })
+
+    it('rejects a screenshot with an invalid rect', () => {
+      expect(validatePrompt(fixtureBody({ screenshot: fixtureShot({ rect: { x: NaN, y: 0, w: 10, h: 10 } }) }))).toBeNull()
+      expect(validatePrompt(fixtureBody({ screenshot: fixtureShot({ rect: 'nope' as unknown as ScreenshotRequest['rect'] }) }))).toBeNull()
+    })
+
+    it('rejects a non-object screenshot', () => {
+      expect(validatePrompt(fixtureBody({ screenshot: 'nope' as unknown as ScreenshotRequest }))).toBeNull()
     })
   })
 })
