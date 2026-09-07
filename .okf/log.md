@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+Demo GIF renamed to `.github/demo-popup.gif` (README updated) so GitHub's image proxy and browsers stop serving the cached old frame under the previous URL.
+
 README demo GIF re-recorded zoomed on the popup (the full-viewport recording was too small to read): headless Chromium at 2x, dark scheme, 900x840 viewport, screenshots clipped to the button and popup region, nine frames with per-frame durations assembled by ffmpeg with a diff-mode palette; 1000x778, 146 kB (`gif-record.mts` in the session scratchpad). No package change, npm renders the README image from the repository's default branch.
 
 Release 0.2.0 cut: `package.json` and `package-lock.json` bumped to 0.2.0, `CHANGELOG.md` gained the `[0.2.0]` section (popup redesign, spawn rows, interaction fixes, test counts) and its intro now says releases are `v*` tags published from CI over trusted publishing (it wrongly named release-it). Tag `v0.2.0` pushed; this is the first release that goes through the tokenless workflow end to end.

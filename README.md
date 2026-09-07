@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/scaccogatto/vite-plugin-herdr/actions/workflows/ci.yml/badge.svg)](https://github.com/scaccogatto/vite-plugin-herdr/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/vite-plugin-herdr)](https://www.npmjs.com/package/vite-plugin-herdr) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-<img src=".github/demo.gif" width="800" alt="vite-plugin-herdr demo: ctrl+b, click an element, type the fix, pick the agent, the outline waits until the agent finishes">
+<img src=".github/demo-popup.gif" width="800" alt="vite-plugin-herdr demo: ctrl+b, click an element, type the fix, pick the agent, the outline waits until the agent finishes">
 
 </div>
 
