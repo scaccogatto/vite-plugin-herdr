@@ -65,6 +65,8 @@ export interface PromptRequest {
   target: string
   prompt: string
   element: ElementInfo
+  /** Up to 4 additional picked elements; the first selected element stays in `element` */
+  extras?: ElementInfo[]
 }
 
 /** Successful response from POST /__herdr/prompt */

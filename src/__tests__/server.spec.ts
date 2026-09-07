@@ -264,6 +264,64 @@ describe('postPrompt', () => {
     const written = await import('node:fs/promises').then((fs) => fs.readFile(join(attachmentDir, files[0] ?? ''), 'utf8'))
     expect(written).toContain('## Snippet')
   })
+
+  describe('extras', () => {
+    const extra = {
+      url: 'http://localhost:3000/page',
+      viewport: { w: 1440, h: 900 },
+      hint: 'src/components/Link.tsx:5:1',
+      path: 'body > main > a.link',
+      rect: { x: 10, y: 20, w: 100, h: 30 },
+      html: '<a data-herdr-picked="">Team</a>',
+      styles: { display: 'inline' },
+    }
+
+    it('absolutizes the hint of every extra and passes them through inline', async () => {
+      fake = await startFakeHerdr({
+        'agent.prompt': () => ({ type: 'agent_prompted', agent: { terminal_title_stripped: 'my agent' } }),
+      })
+      attachmentDir = mkdtempSync(join(tmpdir(), 'vph-att-'))
+
+      const result = await postPrompt(
+        { target: 'w1:p1', prompt: 'make it red', element, extras: [extra] },
+        { socketPath: fake.socketPath, inlineMaxChars: 100000, roots: ['/repo'], attachmentDir },
+      )
+
+      expect(result.ok).toBe(true)
+      const text = fake.received[0]?.params.text as string
+      expect(text).toContain('Focus: /repo/src/components/Button.tsx:42:10')
+      expect(text).toContain('Element 2: body > main > a.link  100x30 at (10,20)')
+      expect(text).toContain('data-herdr-picked="2"')
+      expect(text).not.toContain('Focus: src/components/Link.tsx:5:1')
+
+      const files = await readdir(attachmentDir)
+      expect(files).toHaveLength(0)
+    })
+
+    it('uses the full attachment length (element + extras) for the inline-vs-attachment decision', async () => {
+      fake = await startFakeHerdr({
+        'agent.prompt': () => ({ type: 'agent_prompted', agent: { terminal_title_stripped: 'my agent' } }),
+      })
+      attachmentDir = mkdtempSync(join(tmpdir(), 'vph-att-'))
+
+      // element alone renders well under 200 chars; adding the extra pushes it over
+      const result = await postPrompt(
+        { target: 'w1:p1', prompt: 'make it red', element, extras: [extra] },
+        { socketPath: fake.socketPath, inlineMaxChars: 200, roots: ['/repo'], attachmentDir },
+      )
+
+      expect(result.ok).toBe(true)
+      const text = fake.received[0]?.params.text as string
+      expect(text).toContain('Details:')
+      expect(text).not.toContain('Element 2:')
+
+      const files = await readdir(attachmentDir)
+      expect(files).toHaveLength(1)
+      const written = await import('node:fs/promises').then((fs) => fs.readFile(join(attachmentDir, files[0] ?? ''), 'utf8'))
+      expect(written).toContain('## Element 2')
+      expect(written).toContain('data-herdr-picked="2"')
+    })
+  })
 })
 
 describe('writeAttachment', () => {

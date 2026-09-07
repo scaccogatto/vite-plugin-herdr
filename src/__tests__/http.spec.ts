@@ -140,6 +140,40 @@ describe('validatePrompt', () => {
     expect(validatePrompt('nope')).toBeNull()
     expect(validatePrompt(null)).toBeNull()
   })
+
+  describe('extras', () => {
+    it('accepts up to 4 valid extras', () => {
+      const extras = [fixtureElement(), fixtureElement(), fixtureElement(), fixtureElement()]
+      const body = fixtureBody({ extras })
+      expect(validatePrompt(body)).toEqual(body)
+    })
+
+    it('accepts a single extra', () => {
+      const body = fixtureBody({ extras: [fixtureElement({ path: 'body > a' })] })
+      expect(validatePrompt(body)).toEqual(body)
+    })
+
+    it('rejects more than 4 extras', () => {
+      const extras = [fixtureElement(), fixtureElement(), fixtureElement(), fixtureElement(), fixtureElement()]
+      expect(validatePrompt(fixtureBody({ extras }))).toBeNull()
+    })
+
+    it('rejects extras that is not an array', () => {
+      const body = { ...fixtureBody(), extras: fixtureElement() }
+      expect(validatePrompt(body)).toBeNull()
+    })
+
+    it('rejects extras containing an invalid element', () => {
+      const extras = [fixtureElement(), fixtureElement({ hint: 123 as unknown as string })]
+      expect(validatePrompt(fixtureBody({ extras }))).toBeNull()
+    })
+
+    it('omits extras from the result when not provided', () => {
+      const result = validatePrompt(fixtureBody())
+      expect(result).not.toBeNull()
+      expect(result?.extras).toBeUndefined()
+    })
+  })
 })
 
 describe('sendJson', () => {
