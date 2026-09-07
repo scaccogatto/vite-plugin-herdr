@@ -1,4 +1,4 @@
-/// Bounding box of the element: position and dimensions
+/** Bounding box of the element: position and dimensions */
 export interface Rect {
   x: number
   y: number
@@ -6,13 +6,13 @@ export interface Rect {
   h: number
 }
 
-/// Current viewport dimensions
+/** Current viewport dimensions */
 export interface Viewport {
   w: number
   h: number
 }
 
-/// Captured information about the picked DOM element
+/** Captured information about the picked DOM element */
 export interface ElementInfo {
   url: string
   viewport: Viewport
@@ -23,10 +23,10 @@ export interface ElementInfo {
   styles: Record<string, string>
 }
 
-/// Status of a herdr agent
+/** Status of a herdr agent */
 export type AgentStatus = 'idle' | 'working' | 'blocked' | 'done' | 'unknown'
 
-/// One herdr agent as shown in the popup
+/** One herdr agent as shown in the popup */
 export interface AgentRow {
   pane_id: string
   workspace_id: string
@@ -39,7 +39,7 @@ export interface AgentRow {
   cwd: string | null
 }
 
-/// One herdr workspace
+/** One herdr workspace */
 export interface WorkspaceRow {
   workspace_id: string
   label: string | null
@@ -47,7 +47,7 @@ export interface WorkspaceRow {
   focused: boolean
 }
 
-/// Response from GET /__herdr/state
+/** Response from GET /__herdr/state */
 export type StateResponse =
   | {
       herdr: true
@@ -60,27 +60,27 @@ export type StateResponse =
     }
   | { herdr: false; reason: string; message: string }
 
-/// Request body for POST /__herdr/prompt
+/** Request body for POST /__herdr/prompt */
 export interface PromptRequest {
   target: string
   prompt: string
   element: ElementInfo
 }
 
-/// Successful response from POST /__herdr/prompt
+/** Successful response from POST /__herdr/prompt */
 export interface PromptResponse {
   ok: true
   target: string
   title: string | null
 }
 
-/// Error response from the endpoints
+/** Error response from the endpoints */
 export interface ErrorResponse {
   error: string
   message: string
 }
 
-/// Options passed to the browser client
+/** Options passed to the browser client */
 export interface ClientOptions {
   hotkey: string
   endpoint: string

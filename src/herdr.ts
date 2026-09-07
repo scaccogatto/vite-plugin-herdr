@@ -3,8 +3,10 @@ import net from 'node:net'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-/// Error raised by the herdr socket client, carrying a free-form protocol
-/// error code (for example agent_blocked, not_found, timeout, no_socket)
+/**
+ * Error raised by the herdr socket client, carrying a free-form protocol
+ * error code (for example agent_blocked, not_found, timeout, no_socket)
+ */
 export class HerdrError extends Error {
   readonly code: string
 
@@ -15,8 +17,10 @@ export class HerdrError extends Error {
   }
 }
 
-/// Resolves the herdr Unix socket path: explicit override, then
-/// HERDR_SOCKET_PATH, then the default under the user's config dir
+/**
+ * Resolves the herdr Unix socket path: explicit override, then
+ * HERDR_SOCKET_PATH, then the default under the user's config dir
+ */
 export function resolveSocketPath(override?: string): string {
   return override ?? process.env.HERDR_SOCKET_PATH ?? join(homedir(), '.config', 'herdr', 'herdr.sock')
 }
@@ -27,8 +31,10 @@ function mapConnectionError(err: NodeJS.ErrnoException): HerdrError {
   return new HerdrError('unreachable', err.message)
 }
 
-/// Parses one NDJSON response line, checking the id and unwrapping the
-/// result or throwing the herdr-reported error
+/**
+ * Parses one NDJSON response line, checking the id and unwrapping the
+ * result or throwing the herdr-reported error
+ */
 export function parseLine(line: string, id: string): unknown {
   let parsed: unknown
   try {
@@ -56,8 +62,10 @@ export function parseLine(line: string, id: string): unknown {
   return obj.result
 }
 
-/// Sends one request over a fresh connection to the herdr socket: connect,
-/// write one NDJSON line, read the first response line, close
+/**
+ * Sends one request over a fresh connection to the herdr socket: connect,
+ * write one NDJSON line, read the first response line, close
+ */
 export function request(
   socketPath: string,
   method: string,
@@ -111,10 +119,12 @@ export function request(
   })
 }
 
-/// Opens a long-lived connection subscribed to herdr events. The first
-/// response line is the subscription ack (errors go to onError, closing the
-/// connection); every following line is pushed to onEvent. There is no
-/// unsubscribe: call close() to end the connection.
+/**
+ * Opens a long-lived connection subscribed to herdr events. The first
+ * response line is the subscription ack (errors go to onError, closing the
+ * connection); every following line is pushed to onEvent. There is no
+ * unsubscribe: call close() to end the connection.
+ */
 export function subscribe(
   socketPath: string,
   subscriptions: Record<string, unknown>[],
@@ -178,7 +188,7 @@ export function subscribe(
   return { close }
 }
 
-/// Maps a herdr protocol error code to an HTTP status code
+/** Maps a herdr protocol error code to an HTTP status code */
 export function httpStatus(code: string): number {
   switch (code) {
     case 'invalid_params':

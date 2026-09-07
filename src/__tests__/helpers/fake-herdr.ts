@@ -3,7 +3,7 @@ import net from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-/// A herdr socket line request as received by the fake server
+/** A herdr socket line request as received by the fake server */
 export interface FakeHerdr {
   socketPath: string
   received: { method: string; params: Record<string, unknown> }[]
@@ -17,11 +17,13 @@ interface Message {
   params: Record<string, unknown>
 }
 
-/// Starts a fake herdr Unix socket server for tests. Each handler receives
-/// the request params and returns a result object, or `{ __error: { code, message } }`
-/// to have the fake answer with an error line. `events.subscribe` is handled
-/// specially: it answers with `subscription_started` and keeps the connection
-/// open so `pushEvent` can push further event lines.
+/**
+ * Starts a fake herdr Unix socket server for tests. Each handler receives
+ * the request params and returns a result object, or `{ __error: { code, message } }`
+ * to have the fake answer with an error line. `events.subscribe` is handled
+ * specially: it answers with `subscription_started` and keeps the connection
+ * open so `pushEvent` can push further event lines.
+ */
 export function startFakeHerdr(handlers: Record<string, (params: Record<string, unknown>) => unknown>): Promise<FakeHerdr> {
   const dir = mkdtempSync(join(tmpdir(), 'vph-'))
   const socketPath = join(dir, 's.sock')

@@ -16,7 +16,7 @@ import type {
   WorkspaceRow,
 } from './types.ts'
 
-/// Options for mounting the herdr routes on a Vite dev server
+/** Options for mounting the herdr routes on a Vite dev server */
 export interface ServerOptions {
   endpoint: string
   socketPath: string | undefined
@@ -24,7 +24,7 @@ export interface ServerOptions {
   attachmentDir?: string
 }
 
-/// Default directory for oversized element snippet attachments
+/** Default directory for oversized element snippet attachments */
 export const ATTACHMENT_DIR = join(tmpdir(), 'vite-plugin-herdr')
 
 function str(x: unknown): string | null {
@@ -45,7 +45,7 @@ function stripBranchIcon(raw: string | null): string | null {
   return trimmed
 }
 
-/// Maps a raw herdr AgentInfo object to the AgentRow shape sent to the client
+/** Maps a raw herdr AgentInfo object to the AgentRow shape sent to the client */
 export function toAgentRow(a: Record<string, unknown>): AgentRow {
   const tokens = obj(a.tokens)
   const agentSession = obj(a.agent_session)
@@ -63,7 +63,7 @@ export function toAgentRow(a: Record<string, unknown>): AgentRow {
   }
 }
 
-/// Maps a raw herdr workspace object to the WorkspaceRow shape sent to the client
+/** Maps a raw herdr workspace object to the WorkspaceRow shape sent to the client */
 export function toWorkspaceRow(w: Record<string, unknown>): WorkspaceRow {
   return {
     workspace_id: str(w.workspace_id) ?? '',
@@ -73,9 +73,11 @@ export function toWorkspaceRow(w: Record<string, unknown>): WorkspaceRow {
   }
 }
 
-/// Rewrites a relative source hint ("path:line[:col][suffix]") to an absolute
-/// path resolved against root; hints that are already absolute, or don't
-/// match the pattern, pass through unchanged
+/**
+ * Rewrites a relative source hint ("path:line[:col][suffix]") to an absolute
+ * path resolved against root; hints that are already absolute, or don't
+ * match the pattern, pass through unchanged
+ */
 export function absolutizeHint(hint: string | null, root: string): string | null {
   if (hint === null) return null
 
@@ -93,7 +95,7 @@ export function absolutizeHint(hint: string | null, root: string): string | null
   return `${resolve(root, path)}:${line}${colPart}${rest}`
 }
 
-/// Fetches the herdr session snapshot and maps it to the /state response shape
+/** Fetches the herdr session snapshot and maps it to the /state response shape */
 export async function getState(socketPath: string, env: NodeJS.ProcessEnv = process.env): Promise<StateResponse> {
   try {
     const top = obj(await request(socketPath, 'session.snapshot', {}))
@@ -124,7 +126,7 @@ export async function getState(socketPath: string, env: NodeJS.ProcessEnv = proc
   }
 }
 
-/// Writes an attachment markdown file under dir, returning its absolute path
+/** Writes an attachment markdown file under dir, returning its absolute path */
 export async function writeAttachment(content: string, dir: string): Promise<string> {
   await mkdir(dir, { recursive: true })
   const filePath = join(dir, `${Date.now()}-${randomBytes(3).toString('hex')}.md`)
@@ -132,8 +134,10 @@ export async function writeAttachment(content: string, dir: string): Promise<str
   return filePath
 }
 
-/// Deletes attachment .md files older than maxAgeMs; ignores a missing
-/// directory and per-file errors
+/**
+ * Deletes attachment .md files older than maxAgeMs; ignores a missing
+ * directory and per-file errors
+ */
 export async function cleanupAttachments(dir: string, maxAgeMs = 86400000): Promise<void> {
   let entries: string[]
   try {
@@ -160,8 +164,10 @@ export async function cleanupAttachments(dir: string, maxAgeMs = 86400000): Prom
   )
 }
 
-/// Composes the prompt for a validated request and sends it to herdr,
-/// writing an attachment file when the rendered snippet is too large to inline
+/**
+ * Composes the prompt for a validated request and sends it to herdr,
+ * writing an attachment file when the rendered snippet is too large to inline
+ */
 export async function postPrompt(
   body: PromptRequest,
   opts: { socketPath: string; inlineMaxChars: number; root: string; attachmentDir: string },
@@ -184,7 +190,7 @@ export async function postPrompt(
   }
 }
 
-/// Mounts the /state and /prompt herdr routes on the Vite dev server middleware
+/** Mounts the /state and /prompt herdr routes on the Vite dev server middleware */
 export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
   const mount = server.config.base.replace(/\/$/, '') + opts.endpoint
   const socketPath = resolveSocketPath(opts.socketPath)

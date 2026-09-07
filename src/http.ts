@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import type { PromptRequest } from './types.ts'
 
-/// Error raised by HTTP request handling, carrying the status code to send
+/** Error raised by HTTP request handling, carrying the status code to send */
 export class HttpError extends Error {
   readonly status: number
 
@@ -12,8 +12,10 @@ export class HttpError extends Error {
   }
 }
 
-/// True when the request came from the same origin as the dev server:
-/// Sec-Fetch-Site: same-origin, or an Origin header whose host matches Host
+/**
+ * True when the request came from the same origin as the dev server:
+ * Sec-Fetch-Site: same-origin, or an Origin header whose host matches Host
+ */
 export function isSameOrigin(headers: IncomingHttpHeaders): boolean {
   if (headers['sec-fetch-site'] === 'same-origin') return true
 
@@ -27,7 +29,7 @@ export function isSameOrigin(headers: IncomingHttpHeaders): boolean {
   }
 }
 
-/// Reads and parses a JSON request body, enforcing content-type and a byte cap
+/** Reads and parses a JSON request body, enforcing content-type and a byte cap */
 export async function readJson(req: IncomingMessage, maxBytes: number): Promise<unknown> {
   const contentType = req.headers['content-type']
   if (typeof contentType !== 'string' || !contentType.startsWith('application/json')) {
@@ -70,8 +72,10 @@ function isFiniteNumber(x: unknown): x is number {
   return typeof x === 'number' && Number.isFinite(x)
 }
 
-/// Validates an untrusted request body against the PromptRequest shape,
-/// returning null (never throwing) when it does not match
+/**
+ * Validates an untrusted request body against the PromptRequest shape,
+ * returning null (never throwing) when it does not match
+ */
 export function validatePrompt(body: unknown): PromptRequest | null {
   if (!isPlainObject(body)) return null
 
@@ -118,7 +122,7 @@ export function validatePrompt(body: unknown): PromptRequest | null {
   }
 }
 
-/// Writes a JSON response with the standard status, content-type and cache headers
+/** Writes a JSON response with the standard status, content-type and cache headers */
 export function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status
   res.setHeader('content-type', 'application/json; charset=utf-8')
