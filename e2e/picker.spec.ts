@@ -1,25 +1,18 @@
-import { fileURLToPath } from 'node:url'
 import { test, expect, type Page } from '@playwright/test'
-import { createServer, type ViteDevServer } from 'vite'
-import { fakeBackend, liveState, downState } from './helpers/fake-backend.ts'
-import type { StateResponse } from '../src/types.ts'
+import { assertExplicitSocketPath, startDemo, type DemoServer } from './helpers/servers.ts'
+import { bothIdleSnapshot, liveSnapshot } from './helpers/fixtures.ts'
 
-async function startServer(
-  state: StateResponse,
-  promptStatus?: (target: string) => number,
-): Promise<{ server: ViteDevServer; url: string; received: unknown[] }> {
-  const plugin = fakeBackend({ state, promptStatus })
-  const server = await createServer({
-    configFile: fileURLToPath(new URL('../vite.config.demo.ts', import.meta.url)),
-    server: { port: 0, host: '127.0.0.1' },
-    logLevel: 'silent',
-    plugins: [plugin],
-  })
-  await server.listen()
-  const url = server.resolvedUrls?.local[0]
-  if (url === undefined) throw new Error('vite dev server did not resolve a local url')
-  return { server, url, received: plugin.received }
-}
+// Safety net: this suite drives the real /__herdr/* routes (the herdr()
+// plugin from vite.config.demo.ts), so every server here MUST be started
+// against a fake herdr Unix socket, never a developer's real
+// HERDR_SOCKET_PATH - that could list real agents and type prompts into
+// real sessions. startDemo asserts this on every call it makes; re-assert
+// the guard itself here so a regression in that guard fails this whole file
+// immediately, before any real server (and any real agent) could be touched.
+test.beforeAll(() => {
+  expect(() => assertExplicitSocketPath(undefined)).toThrow()
+  expect(() => assertExplicitSocketPath('')).toThrow()
+})
 
 async function arm(page: Page): Promise<void> {
   await page.keyboard.press('Control+b')
@@ -34,24 +27,19 @@ async function pickTask(page: Page, id: string): Promise<void> {
 }
 
 test.describe('picker with live agents', () => {
-  let server: ViteDevServer
-  let url: string
-  let received: unknown[]
+  let demo: DemoServer
 
   test.beforeAll(async () => {
-    const started = await startServer(liveState)
-    server = started.server
-    url = started.url
-    received = started.received
+    demo = await startDemo({ snapshot: liveSnapshot })
   })
 
   test.afterAll(async () => {
-    await server.close()
+    await demo.close()
   })
 
   test.beforeEach(async ({ context, page }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto(`${url}#bench`)
+    await page.goto(`${demo.url}#bench`)
   })
 
   test('arming shows a crosshair cursor and hovering shows the outline chip', async ({ page }) => {
@@ -112,16 +100,40 @@ test.describe('picker with live agents', () => {
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
     await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeHidden()
 
-    expect(received).toHaveLength(1)
-    const request = received[0] as { target: string; prompt: string; element: { hint: string; html: string; path: string } }
-    expect(request.target).toBe('w1:p2')
-    expect(request.prompt).toBe('Fix the typo')
-    expect(request.element.hint).toContain('data-v-inspector')
-    expect(request.element.html).toContain('data-herdr-picked')
-    expect(request.element.path).toContain('button#task-label')
+    const sent = demo.received()
+    expect(sent).toHaveLength(1)
+    const prompt = sent[0]!
+    expect(prompt.target).toBe('w1:p2')
+    expect(prompt.text).toContain('[vite-plugin-herdr] ')
+    expect(prompt.text).toMatch(/Focus: \/.*\/demo\/Bench\.vue:\d+:\d+ \(data-v-inspector\)/)
+    expect(prompt.text).toContain('data-herdr-picked=""')
+    expect(prompt.text).toContain('button#task-label')
+    expect(prompt.text.split('---')[1]).toContain('Fix the typo')
 
     const last = await page.evaluate(() => localStorage.getItem('herdr:last'))
     expect(last !== null && JSON.parse(last)).toEqual({ pane_id: 'w1:p2', session: 's1' })
+  })
+
+  // Skipped: src/server.ts has no watchAgent (status watch) yet, so the real
+  // routes never open an events.subscribe connection after a send. Unskip
+  // once that lands.
+  test.skip('subscribes to status events for the sent-to agent after a send', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+    await page.keyboard.press('Enter')
+
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('Sent to Fake agent')
+
+    await expect
+      .poll(
+        () =>
+          demo
+            .raw()
+            .some((r) => r.method === 'events.subscribe' && JSON.stringify(r.params).includes('w1:p2')),
+        { timeout: 2000 },
+      )
+      .toBe(true)
   })
 
   test('escape closes the dialog and clears the outline; hotkey works with an input focused', async ({ page }) => {
@@ -133,7 +145,7 @@ test.describe('picker with live agents', () => {
     await expect(page.getByRole('dialog', { name: 'Send to herdr agent' })).toBeHidden()
     await expect(page.locator('[data-herdr-host] .outline')).toBeHidden()
 
-    await page.goto(`${url}`)
+    await page.goto(`${demo.url}`)
     await page.locator('#name').click()
     await arm(page)
     await expect(page.locator('html')).toHaveCSS('cursor', 'crosshair')
@@ -141,22 +153,19 @@ test.describe('picker with live agents', () => {
 })
 
 test.describe('picker with a blocked agent', () => {
-  let server: ViteDevServer
-  let url: string
+  let demo: DemoServer
 
   test.beforeAll(async () => {
-    const started = await startServer(liveState, () => 409)
-    server = started.server
-    url = started.url
+    demo = await startDemo({ snapshot: liveSnapshot, promptError: { code: 'agent_blocked', message: 'blocked' } })
   })
 
   test.afterAll(async () => {
-    await server.close()
+    await demo.close()
   })
 
   test('a blocked response shows a toast and keeps the dialog open', async ({ context, page }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto(`${url}#bench`)
+    await page.goto(`${demo.url}#bench`)
 
     await arm(page)
     await pickTask(page, 'label')
@@ -169,27 +178,24 @@ test.describe('picker with a blocked agent', () => {
 })
 
 test.describe('picker with herdr unreachable', () => {
-  let server: ViteDevServer
-  let url: string
+  let demo: DemoServer
 
   test.beforeAll(async () => {
-    const started = await startServer(downState)
-    server = started.server
-    url = started.url
+    demo = await startDemo({ snapshot: null })
   })
 
   test.afterAll(async () => {
-    await server.close()
+    await demo.close()
   })
 
   test('typing a prompt and pressing Enter copies the composed prompt to the clipboard', async ({ context, page }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto(`${url}#bench`)
+    await page.goto(`${demo.url}#bench`)
 
     await arm(page)
     await pickTask(page, 'label')
 
-    await expect(page.locator('[data-herdr-host] [role="listbox"]')).toContainText('herdr not reachable')
+    await expect(page.locator('[data-herdr-host] .agents-notice')).toContainText('no_socket')
 
     await page.locator('[data-herdr-host] textarea').fill('typo, should say Submit')
     await page.keyboard.press('Enter')
@@ -198,8 +204,9 @@ test.describe('picker with herdr unreachable', () => {
 
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText())
     expect(clipboardText).toContain('[vite-plugin-herdr] ')
-    expect(clipboardText).toContain('Focus:')
-    expect(clipboardText).toContain('Bench.vue:')
+    // The real vite-plugin-vue-inspector stamps data-v-inspector relative to
+    // the repo root (vite.config.demo.ts's root is demo/), not to demo/ itself.
+    expect(clipboardText).toContain('Focus: demo/Bench.vue:')
     expect(clipboardText).toContain('data-herdr-picked=""')
     expect(clipboardText).toContain('button#task-label')
     expect(clipboardText.split('---')[1]).toContain('typo, should say Submit')
@@ -207,25 +214,19 @@ test.describe('picker with herdr unreachable', () => {
 })
 
 test.describe('picker honors a remembered agent', () => {
-  let server: ViteDevServer
-  let url: string
+  let demo: DemoServer
 
   test.beforeAll(async () => {
-    const bothIdle: StateResponse = liveState.herdr
-      ? { ...liveState, agents: liveState.agents.map((a) => (a.pane_id === 'w1:p3' ? { ...a, agent_status: 'idle' as const } : a)) }
-      : liveState
-    const started = await startServer(bothIdle)
-    server = started.server
-    url = started.url
+    demo = await startDemo({ snapshot: bothIdleSnapshot })
   })
 
   test.afterAll(async () => {
-    await server.close()
+    await demo.close()
   })
 
   test('a remembered pane id wins over the default idle-in-workspace pick', async ({ context, page }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto(`${url}#bench`)
+    await page.goto(`${demo.url}#bench`)
     await page.evaluate(() => localStorage.setItem('herdr:last', JSON.stringify({ pane_id: 'w1:p3', session: 's2' })))
     await page.reload()
 
