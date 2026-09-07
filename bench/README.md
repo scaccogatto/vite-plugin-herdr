@@ -31,7 +31,7 @@ it writes `summary.json` and `summary.md` and prints the markdown table.
 
 ```
 node bench/run.ts --out <dir> [--variants text,text+shot,text+shot+outline] [--reps 1]
-  [--tasks label,link] [--model sonnet] [--max-turns 30] [--dry-run] [--report-only]
+  [--tasks label,link] [--model sonnet] [--max-turns 30] [--dry-run] [--report-only] [--only-failed]
 ```
 
 - `--variants` / `--tasks`: comma-separated subsets, useful for a smoke run before committing to
@@ -39,6 +39,7 @@ node bench/run.ts --out <dir> [--variants text,text+shot,text+shot+outline] [--r
 - `--dry-run`: builds and prints the composed prompt for the first repetition of each task/variant
   without spawning `claude` or touching `runs.jsonl` - use this to sanity-check the prompt.
 - `--report-only`: skips execution and just re-summarizes whatever is already in `runs.jsonl`.
+- `--only-failed`: at startup, remove failed runs (errors or unparsable judge results) from `runs.jsonl` so they get re-run.
 
 ## Resumability
 

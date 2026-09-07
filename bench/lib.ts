@@ -85,6 +85,7 @@ export interface KindStats {
   meanDurationMs: number | null
   meanCostUsd: number | null
   rightFileRate: number
+  errors: number
 }
 
 /** Per-variant, per-kind aggregate stats over a set of RunResults */
@@ -112,14 +113,17 @@ export function summarize(results: RunResult[]): Summary {
     for (const kind of KINDS) {
       const subset = results.filter((r) => r.variant === variant && r.kind === kind)
       const n = subset.length
+      const errorCount = subset.filter((r) => r.isError).length
+      const successfulRuns = subset.filter((r) => !r.isError)
 
       byKind[kind] = {
         n,
-        successRate: rate(subset.filter((r) => r.success).length, n),
-        meanTurns: mean(subset.map((r) => r.numTurns).filter(isNumber)),
-        meanDurationMs: mean(subset.map((r) => r.durationMs).filter(isNumber)),
-        meanCostUsd: mean(subset.map((r) => r.costUsd).filter(isNumber)),
-        rightFileRate: rate(subset.filter((r) => r.rightFile).length, n),
+        successRate: rate(successfulRuns.filter((r) => r.success).length, successfulRuns.length),
+        meanTurns: mean(successfulRuns.map((r) => r.numTurns).filter(isNumber)),
+        meanDurationMs: mean(successfulRuns.map((r) => r.durationMs).filter(isNumber)),
+        meanCostUsd: mean(successfulRuns.map((r) => r.costUsd).filter(isNumber)),
+        rightFileRate: rate(successfulRuns.filter((r) => r.rightFile).length, successfulRuns.length),
+        errors: errorCount,
       }
     }
 
@@ -139,7 +143,11 @@ function turnsCut(base: number | null, variant: number | null): number {
 }
 
 function qualifies(base: KindStats, candidate: KindStats): boolean {
-  return candidate.successRate - base.successRate >= SUCCESS_RATE_BAR || turnsCut(base.meanTurns, candidate.meanTurns) >= TURNS_CUT_BAR
+  // No regression in visual successRate AND (gain >=15 points OR cuts >=25% turns)
+  if (candidate.successRate < base.successRate) return false
+  const hasGain = candidate.successRate - base.successRate >= SUCCESS_RATE_BAR
+  const hasTurnsCut = turnsCut(base.meanTurns, candidate.meanTurns) >= TURNS_CUT_BAR
+  return hasGain || hasTurnsCut
 }
 
 function beats(base: KindStats, candidate: KindStats): boolean {
@@ -156,26 +164,69 @@ export function decide(summary: Summary): { screenshot: boolean; outline: boolea
   const shotEdit = summary['text+shot'].edit
   const outlineEdit = summary['text+shot+outline'].edit
 
-  const shotQualifies = qualifies(textVisual, shotVisual) && shotEdit.successRate >= textEdit.successRate
-  const outlineQualifies = qualifies(textVisual, outlineVisual) && outlineEdit.successRate >= textEdit.successRate
+  // Screenshot qualifies if: no visual regression AND (gain >=15 or cut >=25%) AND no edit regression
+  const shotQualifies =
+    shotVisual.successRate >= textVisual.successRate &&
+    qualifies(textVisual, shotVisual) &&
+    shotEdit.successRate >= textEdit.successRate
+
+  // Outline qualifies if: no visual regression AND (gain >=15 or cut >=25%) AND no edit regression
+  const outlineQualifies =
+    outlineVisual.successRate >= textVisual.successRate &&
+    qualifies(textVisual, outlineVisual) &&
+    outlineEdit.successRate >= textEdit.successRate
+
   const screenshot = shotQualifies || outlineQualifies
 
   const reasons: string[] = []
   if (screenshot) {
     const via = [shotQualifies && 'text+shot', outlineQualifies && 'text+shot+outline'].filter((v): v is string => v !== false)
     reasons.push(
-      `${via.join(' and ')} raise${via.length === 1 ? 's' : ''} visual successRate by >=0.15 or cut${via.length === 1 ? 's' : ''} meanTurns by >=25% versus text, without lowering edit successRate: the screenshot ships`,
+      `${via.join(' and ')} raise${via.length === 1 ? 's' : ''} visual successRate by >=15 points or cut${via.length === 1 ? 's' : ''} meanTurns by >=25% versus text, without regression in visual or edit successRate: the screenshot ships`,
     )
   } else {
-    reasons.push('neither text+shot nor text+shot+outline clears the visual bar without lowering edit successRate: no screenshot ships')
+    // Explain why screenshot didn't qualify
+    if (!shotQualifies) {
+      if (shotVisual.successRate < textVisual.successRate) {
+        reasons.push(
+          `text+shot: visual successRate regressed from ${(textVisual.successRate * 100).toFixed(0)}% to ${(shotVisual.successRate * 100).toFixed(0)}% - rejected`,
+        )
+      } else if (shotEdit.successRate < textEdit.successRate) {
+        reasons.push(
+          `text+shot: edit successRate regressed from ${(textEdit.successRate * 100).toFixed(0)}% to ${(shotEdit.successRate * 100).toFixed(0)}% - rejected`,
+        )
+      } else {
+        reasons.push(
+          `text+shot: did not meet visual bar (no gain >=15 points or cut >=25% turns) - rejected`,
+        )
+      }
+    }
+    if (!outlineQualifies) {
+      if (outlineVisual.successRate < textVisual.successRate) {
+        reasons.push(
+          `text+shot+outline: visual successRate regressed from ${(textVisual.successRate * 100).toFixed(0)}% to ${(outlineVisual.successRate * 100).toFixed(0)}% - rejected`,
+        )
+      } else if (outlineEdit.successRate < textEdit.successRate) {
+        reasons.push(
+          `text+shot+outline: edit successRate regressed from ${(textEdit.successRate * 100).toFixed(0)}% to ${(outlineEdit.successRate * 100).toFixed(0)}% - rejected`,
+        )
+      } else {
+        reasons.push(
+          `text+shot+outline: did not meet visual bar (no gain >=15 points or cut >=25% turns) - rejected`,
+        )
+      }
+    }
   }
 
-  const outline = screenshot && beats(shotVisual, outlineVisual)
-  reasons.push(
-    outline
-      ? 'text+shot+outline beats text+shot on visual successRate or meanTurns: the outline stays'
-      : 'text+shot+outline does not beat text+shot on visual successRate or meanTurns: the outline does not ship',
-  )
+  // Outline only ships if it qualifies and beats text+shot
+  const outline = outlineQualifies && screenshot && beats(shotVisual, outlineVisual)
+  if (screenshot) {
+    reasons.push(
+      outline
+        ? 'text+shot+outline beats text+shot on visual successRate or meanTurns: the outline stays'
+        : 'text+shot+outline does not beat text+shot on visual successRate or meanTurns: the outline does not ship',
+    )
+  }
 
   return { screenshot, outline, reasons }
 }
@@ -198,14 +249,14 @@ export function renderSummary(summary: Summary, decision: ReturnType<typeof deci
 
   lines.push('# Payload benchmark summary')
   lines.push('')
-  lines.push('| Variant | Kind | n | successRate | meanTurns | meanDurationMs | meanCostUsd | rightFileRate |')
-  lines.push('|---|---|---|---|---|---|---|---|')
+  lines.push('| Variant | Kind | n | successRate | meanTurns | meanDurationMs | meanCostUsd | rightFileRate | errors |')
+  lines.push('|---|---|---|---|---|---|---|---|---|')
 
   for (const variant of VARIANTS) {
     for (const kind of KINDS) {
       const s = summary[variant][kind]
       lines.push(
-        `| ${variant} | ${kind} | ${s.n} | ${fmtRate(s.successRate)} | ${fmtNum(s.meanTurns, 1)} | ${fmtNum(s.meanDurationMs)} | ${fmtCost(s.meanCostUsd)} | ${fmtRate(s.rightFileRate)} |`,
+        `| ${variant} | ${kind} | ${s.n} | ${fmtRate(s.successRate)} | ${fmtNum(s.meanTurns, 1)} | ${fmtNum(s.meanDurationMs)} | ${fmtCost(s.meanCostUsd)} | ${fmtRate(s.rightFileRate)} | ${s.errors} |`,
       )
     }
   }

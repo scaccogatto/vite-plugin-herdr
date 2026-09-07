@@ -106,10 +106,25 @@ describe('summarize', () => {
     expect(summary['text+shot+outline'].edit.n).toBe(0)
     expect(summary['text+shot+outline'].visual.n).toBe(0)
   })
+
+  it('excludes error runs from success/turn stats but counts them in errors field', () => {
+    const results: RunResult[] = [
+      result({ taskId: 'label', kind: 'edit', variant: 'text', rep: 1, success: true, numTurns: 4, durationMs: 8000, costUsd: 0.1 }),
+      result({ taskId: 'label', kind: 'edit', variant: 'text', rep: 2, isError: true, numTurns: null, durationMs: null, costUsd: null }),
+      result({ taskId: 'label', kind: 'edit', variant: 'text', rep: 3, success: false, numTurns: 6, durationMs: 12000, costUsd: 0.2 }),
+    ]
+
+    const summary = summarize(results)
+
+    expect(summary['text'].edit.n).toBe(3)
+    expect(summary['text'].edit.errors).toBe(1)
+    expect(summary['text'].edit.successRate).toBeCloseTo(0.5) // 1 success out of 2 non-error runs
+    expect(summary['text'].edit.meanTurns).toBeCloseTo(5) // (4 + 6) / 2
+  })
 })
 
 function stats(overrides: Partial<KindStats> = {}): KindStats {
-  return { n: 3, successRate: 0, meanTurns: null, meanDurationMs: null, meanCostUsd: null, rightFileRate: 0, ...overrides }
+  return { n: 3, successRate: 0, meanTurns: null, meanDurationMs: null, meanCostUsd: null, rightFileRate: 0, errors: 0, ...overrides }
 }
 
 function summaryFrom(cfg: Record<Variant, { visual: Partial<KindStats>; edit: Partial<KindStats> }>): Summary {
@@ -150,6 +165,18 @@ describe('decide', () => {
       text: { visual: { successRate: 0.4, meanTurns: 10 }, edit: { successRate: 0.8 } },
       'text+shot': { visual: { successRate: 0.6, meanTurns: 9 }, edit: { successRate: 0.6 } },
       'text+shot+outline': { visual: { successRate: 0.65, meanTurns: 8 }, edit: { successRate: 0.6 } },
+    })
+
+    const decision = decide(summary)
+    expect(decision.screenshot).toBe(false)
+    expect(decision.outline).toBe(false)
+  })
+
+  it('rejects the screenshot when visual success rate regresses despite fewer turns', () => {
+    const summary = summaryFrom({
+      text: { visual: { successRate: 0.8, meanTurns: 10 }, edit: { successRate: 0.8 } },
+      'text+shot': { visual: { successRate: 0.7, meanTurns: 5 }, edit: { successRate: 0.8 } },
+      'text+shot+outline': { visual: { successRate: 0.75, meanTurns: 4 }, edit: { successRate: 0.8 } },
     })
 
     const decision = decide(summary)
