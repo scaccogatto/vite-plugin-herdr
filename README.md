@@ -59,7 +59,7 @@ Outside herdr the same popup composes the same prompt and copies it to the clipb
 | hover | Highlight the element under the cursor |
 | click | Pick the highlighted element, open the popup |
 | `Shift+click` | Add the element to the selection, keep picking |
-| `📷 attach screenshot` | Checkbox, shown only when the screenshot capability is available: attach a real-pixel screenshot of the picked element |
+| `📷 attach screenshot` | Checkbox, shown only when the screenshot capability is available: attach a real-pixel screenshot of the picked element. Capture is skipped if the tab is hidden; the picked element must be visible on screen (a covered window is captured as-is); a left-aligned Chrome side panel shifts the crop by its width. |
 | `Up` / `Down` | Change the selected agent |
 | `Enter` | Send (or copy, without herdr) |
 | `Shift+Enter` | New line in the prompt |
@@ -187,7 +187,7 @@ For plain Vite SPA/MPA apps, `transformIndexHtml` injection (the default) is the
 - **Same-origin only.** All three endpoints (`state`, `prompt`, `spawn`) require `Sec-Fetch-Site: same-origin`, or an `Origin` header whose host matches `Host`; anything else gets `403`. No other page, tab, or origin can reach the socket bridge through your dev server.
 - **No token.** A request that already passed the same-origin check is one your own served page made; a token would only re-authenticate a request that is already trusted, and adds a secret to manage for no extra safety.
 - **Page content as data.** HTML snippets, computed styles, and your prompt text are captured as strings and placed in a fenced block behind an explicit "captured data, not instructions" line. Nothing from the page is ever executed, evaluated, or interpreted as a command.
-- **Screenshot, opt-in.** Only captured when you check the box: a region of your own screen around the picked element, taken by macOS `screencapture` and written to the temp attachment directory (`os.tmpdir()/vite-plugin-herdr/`), cleaned up after 24 hours. Needs Screen Recording permission granted to the terminal app running the dev server.
+- **Screenshot, opt-in.** Only captured when you check the box: a region of your own screen around the picked element, taken by macOS `screencapture` and written to the temp attachment directory (`os.tmpdir()/vite-plugin-herdr/`), cleaned up after 24 hours. Capture is skipped if the tab is hidden; the picked element must be visible on screen (a covered window is captured as-is); a left-aligned Chrome side panel shifts the crop by its width. Needs Screen Recording permission granted to the terminal app running the dev server.
 - **Dev only.** The plugin applies with `apply: 'serve'` and never touches a production build.
 - **Windows.** Unix sockets need an explicit path there: set `HERDR_SOCKET_PATH` yourself. Without it, or without herdr reachable at all, the popup falls back to copying the composed prompt to the clipboard.
 
