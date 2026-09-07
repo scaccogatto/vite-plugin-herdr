@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to this project are documented here. Conventional Commits, releases cut with release-it.
+All notable changes to this project are documented here. Conventional Commits; a release is a `v*` tag, published from CI over npm trusted publishing.
 
 ## [Unreleased]
 
@@ -9,6 +9,22 @@ All notable changes to this project are documented here. Conventional Commits, r
 ### Bug Fixes
 
 ### Build / Tooling
+
+## [0.2.0] - 2026-09-07
+
+### Features
+
+- Popup redesign: a two-row header (selector with Open in editor, ancestors with file:line), a borderless prompt, a screenshot switch, a persistent `To` field that shows the target agent with status, branch and pane, the agent list collapsed by default (Down or a click expands it), a table list with monospace columns and colored status ticks, left accent bar selection, workspace headings with a `focused` pill, and a keycap footer with a Send button; light and dark schemes follow `prefers-color-scheme`, every text pair at 4.5:1 or better.
+- Spawn actions are the last two rows of the agent list, reachable with Up/Down: select one and Enter (or Send) starts the agent, split pane or fresh worktree, then sends the prompt to it.
+- Popup interactions: Tab cycles inside the dialog, Enter on a focused button activates that button, a sending state disables the form and restores focus after an error, the popup stays inside the viewport after the list grows and on resize, the picked outline follows page scroll, entry motion respects reduced motion; listbox groups with `aria-activedescendant`, tooltips on blocked rows and on long hints.
+
+### Bug Fixes
+
+- Multi-select boxes no longer paint above the popup; the hover chip hides over an element that is in flight; rows disabled during a spawn no longer look blocked; the in-flight chip renders right after a send instead of waiting for the first status event; long hints truncate from the start so the file name stays visible.
+
+### Build / Tooling
+
+- 27 new Playwright specs for the popup (53 e2e in total) and 253 unit tests; the fake herdr answers `agent.prompt` with the target's own title; the README demo GIF was re-recorded with the new popup.
 
 ## [0.1.0] - 2026-09-07
 
@@ -29,5 +45,6 @@ All notable changes to this project are documented here. Conventional Commits, r
 
 - TypeScript strict, ESM only, Vite 8 library build with bundled declarations, Vitest unit and integration specs with a fake herdr socket, Playwright end-to-end specs on the real routes, GitHub Actions CI (lint, typecheck, coverage, build, e2e) and a tag-driven release with npm provenance.
 
-[Unreleased]: https://github.com/scaccogatto/vite-plugin-herdr/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/scaccogatto/vite-plugin-herdr/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/scaccogatto/vite-plugin-herdr/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/scaccogatto/vite-plugin-herdr/releases/tag/v0.1.0
