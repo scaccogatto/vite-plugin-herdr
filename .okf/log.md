@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+Demo GIF re-recorded once more so the story is true: after the send, the recording script edits `demo/Bench.vue` (Sumbit to Submit) so Vite HMR swaps the label in the page while the agent is working, then the DONE chip lands on the fixed button; the source is restored afterwards. Ten frames, 147 kB.
+
 Demo GIF renamed to `.github/demo-popup.gif` (README updated) so GitHub's image proxy and browsers stop serving the cached old frame under the previous URL.
 
 README demo GIF re-recorded zoomed on the popup (the full-viewport recording was too small to read): headless Chromium at 2x, dark scheme, 900x840 viewport, screenshots clipped to the button and popup region, nine frames with per-frame durations assembled by ffmpeg with a diff-mode palette; 1000x778, 146 kB (`gif-record.mts` in the session scratchpad). No package change, npm renders the README image from the repository's default branch.
