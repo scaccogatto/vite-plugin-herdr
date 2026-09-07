@@ -24,12 +24,12 @@ sources:
    git tag v0.1.0
    git push origin v0.1.0
    ```
-4. **The release workflow does the rest.** `.github/workflows/release.yml` fires on the `v*` tag push (or a manual `workflow_dispatch`): `npm ci`, `npm run build`, then `npm publish --provenance` with `id-token: write`. Auth comes from the `NPM_TOKEN` repository secret, wired into the publish step as `NODE_AUTH_TOKEN`; provenance is attested over GitHub OIDC either way.
-5. **Bootstrap, one-time and by hand.** npm's trusted publishing is configured from the package's settings page on npmjs.com, so it needs the package to exist first; the first release therefore goes through a token:
-   - On npmjs.com: Access Tokens, Generate New Token, Granular Access Token, packages and scopes read and write, with 2FA bypass so CI can use it, short expiry (a week is enough).
-   - Store it without it ever touching a shell history or a chat: copy it, then `gh secret set NPM_TOKEN --body "$(pbpaste)"` from the repo.
-   - Push the tag (step 3). The workflow publishes `0.1.0` with provenance.
-   - Then switch to trusted publishing: on npmjs.com, package `vite-plugin-herdr`, Settings, Trusted Publisher, GitHub Actions, organization or user `scaccogatto`, repository `vite-plugin-herdr`, workflow filename `release.yml`, no environment. Delete the `NPM_TOKEN` secret (`gh secret delete NPM_TOKEN`), revoke the token on npmjs.com, and remove the `env` block from the publish step in `release.yml`: from then on OIDC alone authenticates and no secret exists anywhere.
+4. **The release workflow does the rest, without any token.** `.github/workflows/release.yml` fires on the `v*` tag push (or a manual `workflow_dispatch`): `npm ci`, `npm run build`, then `npm publish --provenance` with `id-token: write`. The workflow is registered on npmjs.com as the package's trusted publisher, so npm exchanges the GitHub OIDC identity for a short-lived publish credential; nothing is stored in the repo, in GitHub secrets or on any machine. Never add `NODE_AUTH_TOKEN` to the publish step: with a token present npm skips OIDC. Trusted publishing needs npm 11.5.1 or later, which is why the workflow installs `npm@latest` before publishing.
+5. **Bootstrap, one time, by hand, no token stored anywhere.** A trusted publisher attaches to a package that already exists (npm/cli#8544 tracks first-publish support), so the first version is published from a maintainer's machine with the account's 2FA:
+   - `npm login` (browser flow), then from a clean checkout of the tagged commit: `npm run build` and `npm publish` (npm asks for 2FA in the browser; without provenance, which only CI can attest).
+   - On npmjs.com, package `vite-plugin-herdr`, Settings, Trusted publishing: GitHub Actions, organization or user `scaccogatto`, repository `vite-plugin-herdr`, workflow filename `release.yml`, no environment, allow `npm publish`. Then Publishing access: "Require two-factor authentication and disallow tokens", so no token can ever publish this package again.
+   - `npm logout`, which deletes the login token from `~/.npmrc`.
+   - Push the tag (step 3) afterwards: the workflow's version guard sees `0.1.0` already on the registry and skips the publish, so the tag only marks the release on GitHub. Every later version is published by the workflow over OIDC, with provenance.
 6. **Re-running is safe.** The workflow's "Check if version is already published" step runs `npm view <name>@<version>` first and skips the publish step entirely when that version is already on the registry, so a re-run of the workflow or a duplicate tag push never double-publishes or fails loudly.
 
 ## Versioning

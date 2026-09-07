@@ -29,12 +29,9 @@ jobs:
           else
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi
+      # Tokenless: this workflow is registered on npmjs.com as the package's
+      # trusted publisher, so npm authenticates over GitHub OIDC (id-token above).
+      # Never add NODE_AUTH_TOKEN here: with a token present npm skips OIDC.
       - name: Publish
         if: steps.check.outputs.published == 'false'
         run: npm publish --provenance
-        env:
-          # Bootstrap auth: an npm granular access token stored as the NPM_TOKEN
-          # repository secret. Once the package exists and has this repo and
-          # workflow registered as a trusted publisher on npmjs.com, delete the
-          # secret and this env block: OIDC alone then authenticates the publish.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
