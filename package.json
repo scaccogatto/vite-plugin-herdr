@@ -1,0 +1,78 @@
+{
+  "name": "vite-plugin-herdr",
+  "version": "0.0.0",
+  "description": "Pick a DOM element in your Vite app and send it, with a prompt, to a coding agent running in herdr.",
+  "type": "module",
+  "author": {
+    "name": "Marco Boffo",
+    "email": "chat@marcoboffo.me"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scaccogatto/vite-plugin-herdr.git"
+  },
+  "homepage": "https://github.com/scaccogatto/vite-plugin-herdr#readme",
+  "bugs": {
+    "url": "https://github.com/scaccogatto/vite-plugin-herdr/issues"
+  },
+  "keywords": [
+    "vite",
+    "vite-plugin",
+    "herdr",
+    "claude-code",
+    "coding-agent",
+    "dom",
+    "element-picker",
+    "devtools",
+    "ai"
+  ],
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && vite build --mode client",
+    "typecheck": "tsc --noEmit && npm run typecheck-demo",
+    "typecheck-demo": "vue-tsc --noEmit -p tsconfig.demo.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "dev-demo": "vite --config vite.config.demo.ts",
+    "build-demo": "vite build --config vite.config.demo.ts",
+    "e2e": "playwright test",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "peerDependencies": {
+    "vite": "^7.0.0 || ^8.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.4.1",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "@vitest/coverage-v8": "^5.0.0",
+    "eslint": "^10.10.0",
+    "jsdom": "^30.0.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.69.0",
+    "vite": "^8.2.2",
+    "vite-plugin-dts": "^5.1.0",
+    "vite-plugin-vue-inspector": "^6.0.0",
+    "vitest": "^5.0.0",
+    "vue": "^3.5.42",
+    "vue-tsc": "^3.3.11"
+  }
+}
