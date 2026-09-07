@@ -10,10 +10,14 @@ async function arm(page: Page): Promise<void> {
 }
 
 async function pickTask(page: Page, id: string): Promise<void> {
-  const locator = page.locator(`#task-${id}`)
+  await pickSelector(page, `#task-${id}`)
+}
+
+async function pickSelector(page: Page, selector: string): Promise<void> {
+  const locator = page.locator(selector)
   await locator.hover()
   const box = await locator.boundingBox()
-  if (box === null) throw new Error(`no bounding box for #task-${id}`)
+  if (box === null) throw new Error(`no bounding box for ${selector}`)
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
 }
 
@@ -154,6 +158,8 @@ test.describe('popup interactions', () => {
 
     const dialog = page.getByRole('dialog', { name: 'Send to herdr agent' })
     await expect(dialog).toHaveClass(/sending/)
+    await expect(page.locator('[data-herdr-host] .send-btn')).toHaveText('Sending…')
+    await expect(page.locator('[data-herdr-host] .send-btn')).toBeDisabled()
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('waiting at a dialog')
     await expect(dialog).not.toHaveClass(/sending/)
     await expect(page.locator('[data-herdr-host] textarea')).toBeFocused()
@@ -189,6 +195,30 @@ test.describe('popup interactions', () => {
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('waiting at a dialog')
   })
 
+  test('arrow keys are frozen while sending', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
+    await waitForPreselectedAgent(page)
+
+    await page.route('**/__herdr/prompt', async (route) => {
+      await new Promise((r) => setTimeout(r, 300))
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'agent_blocked', message: 'blocked' }) })
+    })
+    await page.keyboard.press('Enter')
+
+    const dialog = page.getByRole('dialog', { name: 'Send to herdr agent' })
+    await expect(dialog).toHaveClass(/sending/)
+    const toRow = page.locator('[data-herdr-host] .to-row')
+    await expect(toRow).toHaveAttribute('aria-expanded', 'false')
+    // Mirrors the Tab freeze above: ArrowDown must not expand the (dimmed,
+    // pointer-events: none) list mid-request either.
+    await page.keyboard.press('ArrowDown')
+    await expect(toRow).toHaveAttribute('aria-expanded', 'false')
+
+    await expect(page.locator('[data-herdr-host] .toast')).toContainText('waiting at a dialog')
+  })
+
   test('the To field shows the preselected agent with its status and the list starts collapsed', async ({ page }) => {
     await arm(page)
     await pickTask(page, 'label')
@@ -214,8 +244,11 @@ test.describe('popup interactions', () => {
     const worktree = page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent in worktree' })
     await expect(here).toBeVisible()
     await expect(worktree).toBeVisible()
-    await expect(here.locator('.spawn-hint')).toHaveText('split pane')
-    await expect(worktree.locator('.spawn-hint')).toHaveText('new worktree')
+    // No env sets HERDR_WORKSPACE_ID for this demo (and the ambient one, if
+    // any, never matches the fixture's w1/w2 ids), so the dev workspace
+    // label is unknown and "here" falls back to the generic hint.
+    await expect(here.locator('.spawn-hint')).toHaveText('split pane next to the dev server')
+    await expect(worktree.locator('.spawn-hint')).toHaveText('fresh worktree')
   })
 
   test('Down expands the list without moving, then moves and the To field mirrors it', async ({ page }) => {
@@ -259,6 +292,10 @@ test.describe('popup interactions', () => {
 
     await page.keyboard.press('Enter')
     await expect(toRow).toHaveAttribute('aria-expanded', 'false')
+
+    await page.keyboard.press('Space')
+    await expect(toRow).toHaveAttribute('aria-expanded', 'true')
+    expect(demo.received().length).toBe(before)
   })
 
   test('clicking the To field toggles the list', async ({ page }) => {
@@ -367,6 +404,7 @@ test.describe('popup interactions', () => {
       await expect(page.locator('[data-herdr-host] .send-btn')).toHaveText('Copy')
       await expect(page.locator('[data-herdr-host] .agents-notice')).toBeVisible()
       await expect(page.locator('[data-herdr-host] .spawn-row')).toHaveCount(0)
+      await expect(page.locator('[data-herdr-host] .keys span').first()).toContainText('copy')
     } finally {
       await clipboardDemo.close()
     }
@@ -393,9 +431,39 @@ test.describe('popup interactions', () => {
 
     await expect(page.locator('[data-herdr-host] .inflight-chip')).toHaveClass(/blocked/)
     await expect(page.locator('[data-herdr-host] .inflight-chip')).toContainText('blocked')
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toBeVisible()
     await expect(page.locator('[data-herdr-host] .inflight')).toHaveClass(/blocked/)
     // Settled outlines (done/blocked) are solid; dashed means still working.
     await expect(page.locator('[data-herdr-host] .inflight')).toHaveCSS('border-style', 'solid')
+  })
+
+  test('hovering a blocked row does not tint it', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await waitForPreselectedAgent(page)
+    await page.keyboard.press('ArrowDown') // expand
+
+    // liveSnapshot's w2:p1 ("Waiting") is blocked: it must ignore hover the
+    // same way it ignores clicks, not light up as if selectable.
+    const blockedRow = page.locator('[data-herdr-host] [role="option"]', { hasText: 'Waiting' })
+    await expect(blockedRow).toBeVisible()
+    await blockedRow.hover()
+    await expect(blockedRow).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  })
+
+  test('a picked element without its own id shows the ancestor path', async ({ page }) => {
+    await arm(page)
+    // .note-text has no id of its own (its parent p#task-color does), so
+    // selectorPath climbs past it: this is the only demo target that
+    // exercises .popup-path at all (every #task-* element stops the climb
+    // at itself). Picked at the default (wide) viewport - the sentence
+    // wraps at 390px, and clicking a wrapped inline element's bounding-box
+    // center misses the text and hits the paragraph instead.
+    await pickSelector(page, '.note-text')
+    await waitForPreselectedAgent(page)
+
+    await expect(page.locator('[data-herdr-host] .popup-path')).toBeVisible()
+    await expect(page.locator('[data-herdr-host] .popup-path')).toContainText('in ')
   })
 
   test('narrow viewport hides the esc hint and the branch column, keeps Send visible', async ({ page }) => {
@@ -447,6 +515,21 @@ test.describe('popup interactions', () => {
     // - proves the ellipsis is doing something, not that the hint was short.
     const overflowing = await hint.evaluate((el) => el.scrollWidth > el.clientWidth)
     expect(overflowing).toBe(true)
+  })
+
+  test('the hover chip truncates a long hint from the start, keeping the file name and line:col', async ({ page }) => {
+    // Same long-path stamp as the header test above, but hovered (not
+    // picked): the chip's own 60-char cap used to truncate from the end,
+    // losing exactly the file name/line:col the header keeps.
+    const longPath = '../../../../../../../Users/gatto/Developer/scaccogatto/vite-plugin-herdr/demo/Bench.vue:17:7'
+    await page.locator('#task-link').evaluate((el, v) => el.setAttribute('data-v-inspector', v), longPath)
+
+    await arm(page)
+    await page.locator('#task-link').hover()
+
+    const hint = page.locator('[data-herdr-host] .chip span')
+    await expect(hint).toBeVisible()
+    await expect(hint).toHaveText(/Bench\.vue:17:7$/)
   })
 
   test('the hint right-aligns under Open in editor when there is no ancestor path', async ({ page }) => {

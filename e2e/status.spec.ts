@@ -73,6 +73,11 @@ test.describe('in-flight outline', () => {
     await waitForInflight(page, 'w1:p2')
     await waitForFreshSubscription(demo, beforeSubscribe)
 
+    // The 200 response alone (no status push yet) must already flip the
+    // chip from "sending" to "working" - otherwise it reads "sending"
+    // indefinitely whenever no herdr:status event arrives first.
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toContainText('working')
+
     demo.fake!.pushEvent({
       event: 'pane.agent_status_changed',
       data: { pane_id: 'w1:p2', workspace_id: 'w1', agent_status: 'working', title: 'Settings polish' },
@@ -113,6 +118,50 @@ test.describe('in-flight outline', () => {
     })
 
     await expect(page.locator('[data-herdr-host] .toast')).toContainText('waiting for you', { timeout: 5000 })
+  })
+
+  test('hovering the in-flight element again does not show a duplicate hover chip', async ({ page }) => {
+    await arm(page)
+    await pickTask(page, 'label')
+    await sendPrompt(page)
+    await waitForInflight(page, 'w1:p2')
+
+    // Enter picking mode again and hover the very element that is in
+    // flight: only its own in-flight chip should be shown, not a second
+    // hover chip stacked on top of it.
+    await arm(page)
+    await page.locator('#task-label').hover()
+
+    await expect(page.locator('[data-herdr-host] .inflight-chip')).toBeVisible()
+    await expect(page.locator('[data-herdr-host] .chip')).toBeHidden()
+  })
+
+  test('a blocked chip with a long title repositions instead of running off-screen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 })
+    const beforeSubscribe = subscribeCount(demo)
+    await arm(page)
+    await pickTask(page, 'label')
+    await sendPrompt(page)
+
+    await waitForInflight(page, 'w1:p2')
+    await waitForFreshSubscription(demo, beforeSubscribe)
+
+    demo.fake!.pushEvent({
+      event: 'pane.agent_status_changed',
+      data: {
+        pane_id: 'w1:p2',
+        workspace_id: 'w1',
+        agent_status: 'blocked',
+        title: 'A very long agent title that would overflow a narrow viewport if the chip were not repositioned',
+      },
+    })
+
+    const chip = page.locator('[data-herdr-host] .inflight-chip')
+    await expect(chip).toHaveClass(/blocked/)
+    const box = await chip.boundingBox()
+    expect(box).not.toBeNull()
+    expect(box!.x).toBeGreaterThanOrEqual(0)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390)
   })
 })
 
@@ -246,7 +295,9 @@ test.describe('spawn buttons', () => {
       await page.keyboard.press('ArrowDown')
       await page.keyboard.press('ArrowDown')
       await expect(page.locator('[data-herdr-host] .to-row')).toContainText('+ agent here')
-      await expect(page.locator('[data-herdr-host] .to-row')).toContainText('split pane')
+      // HERDR_WORKSPACE_ID=w1 resolves to the fixture's 'app' label: the hint
+      // names the dev server's own workspace, not just a bare "split pane".
+      await expect(page.locator('[data-herdr-host] .to-row')).toContainText('split pane in app')
 
       await page.keyboard.press('Enter')
 
@@ -285,13 +336,24 @@ test.describe('spawn buttons', () => {
         })
       })
 
+      const spawnRow = page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' })
+      const spawnTitle = spawnRow.locator('.agent-title')
+      const beforeColor = await spawnTitle.evaluate((el) => getComputedStyle(el).color)
+
       await page.locator('[data-herdr-host] textarea').fill('Fix the typo')
-      await page.locator('[data-herdr-host] .spawn-row', { hasText: '+ agent here' }).click()
+      await spawnRow.click()
       await page.keyboard.press('Enter')
 
       const dialog = page.getByRole('dialog', { name: 'Send to herdr agent' })
       await expect(dialog).toHaveClass(/sending/)
       await expect(page.locator('[data-herdr-host] .agents-notice')).toContainText('starting agent')
+
+      // Rows in progress get their own "busy" marker, not the blocked
+      // look: the spawn row's title must stay its normal accent-ink color,
+      // never fall to the blocked/muted color aria-disabled alone used to
+      // trigger.
+      await expect(spawnRow).toHaveClass(/busy/)
+      expect(await spawnTitle.evaluate((el) => getComputedStyle(el).color)).toBe(beforeColor)
 
       await page.keyboard.press('Escape')
       await expect(dialog).toBeHidden()

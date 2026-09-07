@@ -20,9 +20,11 @@ import {
   popupPathLabel,
   selectorPath,
   sourceHint,
+  spawnHint,
   stripHintSuffix,
+  truncateStart,
 } from './dom.ts'
-import { groupAgents, pickAgent, selectableIds } from './agents.ts'
+import { devWorkspaceLabel, groupAgents, pickAgent, selectableIds } from './agents.ts'
 
 /** Max total picked elements: the primary plus up to 4 extras */
 const MAX_SELECTION = 5
@@ -105,10 +107,6 @@ function elementLabel(el: Element): string {
   const classes = classAttr !== null ? classAttr.split(/\s+/).filter((c) => c.length > 0).slice(0, 2) : []
   const classPart = classes.length > 0 ? `.${classes.join('.')}` : ''
   return `${tag}${idPart}${classPart}`
-}
-
-function truncate(value: string, max: number): string {
-  return value.length > max ? `${value.slice(0, max - 3)}...` : value
 }
 
 function rowId(paneId: string): string {
@@ -296,7 +294,9 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 .to-branch, .agent-branch { grid-column: 4; }
 .to-pane, .agent-pane { grid-column: 5; }
 .to-hint, .spawn-hint { grid-column: 3 / 6; }
-.agent-status, .agent-branch, .agent-pane, .to-status, .to-branch, .to-pane, .to-hint, .spawn-hint { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-status, .agent-branch, .agent-pane, .to-status, .to-branch, .to-pane { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; line-height: 16px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Sans, not mono: these are a description ("where"), not a machine value. */
+.to-hint, .spawn-hint { font-size: 12px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 .agent-pane, .to-pane { font-size: 11px; text-align: right; }
 .agent-status, .to-status { display: inline-flex; align-items: center; gap: 6px; overflow: visible; }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--s-unknown); }
@@ -327,14 +327,17 @@ button { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; te
 .agents-group-heading { display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 16px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .focused-pill { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border-radius: 4px; background: var(--tint); color: var(--accent-ink); font-size: 12px; font-weight: 500; }
 .agent-row { position: relative; height: 28px; padding: 0 16px; cursor: pointer; }
-.agent-row:hover { background: var(--tint-faint); }
+.agent-row:not(.blocked):hover { background: var(--tint-faint); }
 .agent-row[aria-selected="true"] { background: var(--tint); }
 .agent-row[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); }
 .agent-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .agent-row[aria-selected="true"] .agent-title { font-weight: 500; }
-.agent-row[aria-disabled="true"] { cursor: not-allowed; }
-.agent-row[aria-disabled="true"] .agent-title { color: var(--muted); }
-.agent-row[aria-disabled="true"] .agent-status { color: var(--danger); }
+.agent-row.blocked { cursor: not-allowed; }
+.agent-row.blocked .agent-title { color: var(--muted); }
+.agent-row.blocked .agent-status { color: var(--danger); }
+/* In-progress spawn: aria-disabled stays purely semantic here, the .55 dim
+   already reaches these rows through .agents-area's opacity in .popup.sending. */
+.agent-row.busy { pointer-events: none; }
 .spawn-group { flex: none; padding: 4px 0; }
 .spawn-row .agent-title { color: var(--accent-ink); font-weight: 500; }
 
@@ -636,6 +639,14 @@ function boot(): void {
       outline.style.width = `${rect.width}px`
       outline.style.height = `${rect.height}px`
 
+      // The in-flight chip already names the agent on this element; a
+      // second hover chip stacked on top of it would just duplicate (and
+      // visually collide with) that information.
+      if (el === inflightEl) {
+        chip.style.display = 'none'
+        return
+      }
+
       const hint = sourceHint(el)
       const label = elementLabel(el)
       const b = document.createElement('b')
@@ -645,7 +656,7 @@ function boot(): void {
         const i = document.createElement('i')
         i.textContent = '·'
         const hintSpan = document.createElement('span')
-        hintSpan.textContent = truncate(stripHintSuffix(hint), 60)
+        hintSpan.textContent = truncateStart(stripHintSuffix(hint), 60)
         nodes.push(i, hintSpan)
       }
       chip.replaceChildren(...nodes)
@@ -699,7 +710,9 @@ function boot(): void {
         badge.className = 'multi-badge'
         badge.textContent = String(i + 1)
         box.appendChild(badge)
-        shadow.appendChild(box)
+        // Later siblings paint on top: keep boxes behind the in-flight
+        // overlay and the popup, matching the DOM order in section 4.
+        shadow.insertBefore(box, inflightBox)
         return box
       })
       positionMultiBoxes()
@@ -810,6 +823,7 @@ function boot(): void {
       const i = document.createElement('i')
       i.textContent = '·'
       inflightChip.replaceChildren(b, i, document.createTextNode('blocked'))
+      positionInflight()
       stopInflightPoll()
       showToast(`${label} is waiting for you in herdr`)
       if (inflightSettleTimer !== undefined) clearTimeout(inflightSettleTimer)
@@ -1019,10 +1033,12 @@ function boot(): void {
     // presently visible (a notice may be covering it).
     function renderTo(): void {
       toRow.classList.remove('spawn', 'empty')
+      const devLabel = currentStateResponse !== null && currentStateResponse.herdr ? devWorkspaceLabel(currentStateResponse) : null
       if (selectedPaneId === 'spawn:here' || selectedPaneId === 'spawn:worktree') {
+        const kind = selectedPaneId === 'spawn:here' ? 'here' : 'worktree'
         toRow.classList.add('spawn')
-        toName.textContent = selectedPaneId === 'spawn:here' ? '+ agent here' : '+ agent in worktree'
-        toHint.textContent = selectedPaneId === 'spawn:here' ? 'split pane' : 'new worktree'
+        toName.textContent = kind === 'here' ? '+ agent here' : '+ agent in worktree'
+        toHint.textContent = spawnHint(kind, devLabel)
         return
       }
 
@@ -1036,6 +1052,7 @@ function boot(): void {
         toStatusDot.className = `status-dot status-${agent.agent_status}`
         toStatusWord.textContent = agent.agent_status
         toBranch.textContent = agent.branch ?? ''
+        toBranch.title = agent.branch ?? ''
         toPane.textContent = agent.pane_id
         return
       }
@@ -1048,6 +1065,7 @@ function boot(): void {
       toStatusDot.className = 'status-dot'
       toStatusWord.textContent = ''
       toBranch.textContent = ''
+      toBranch.title = ''
       toPane.textContent = ''
     }
 
@@ -1093,6 +1111,10 @@ function boot(): void {
     function disableRows(): void {
       for (const row of agentsArea.querySelectorAll<HTMLElement>('.agent-row')) {
         row.setAttribute('aria-disabled', 'true')
+        // Its own class, not the blocked look: aria-disabled stays purely
+        // semantic here, so an idle/working row mid-spawn never picks up the
+        // muted title / red status word `.blocked` carries.
+        row.classList.add('busy')
       }
     }
 
@@ -1105,6 +1127,7 @@ function boot(): void {
 
       const blocked = agent.agent_status === 'blocked'
       if (blocked) {
+        row.classList.add('blocked')
         row.setAttribute('aria-disabled', 'true')
         row.title = 'Waiting for you in herdr, answer it there first'
       }
@@ -1122,6 +1145,7 @@ function boot(): void {
       const branch = document.createElement('span')
       branch.className = 'agent-branch'
       branch.textContent = agent.branch ?? ''
+      branch.title = agent.branch ?? ''
 
       const pane = document.createElement('span')
       pane.className = 'agent-pane'
@@ -1138,10 +1162,11 @@ function boot(): void {
       return row
     }
 
-    // The visible hint stays the two-word mono text the spec and its e2e
-    // assertion fix ("split pane" / "new worktree"); a title tooltip carries
-    // the extra "where" a judge finding asked for without changing that text.
-    function renderSpawnRow(kind: 'here' | 'worktree', focusedLabel: string | null): HTMLElement {
+    // The visible hint names the dev server's own workspace (devLabel, see
+    // devWorkspaceLabel) so "+ agent here" reads as sans, muted, right-
+    // aligned "where" text rather than a machine value; the title tooltip
+    // carries the same information in full sentences.
+    function renderSpawnRow(kind: 'here' | 'worktree', devLabel: string | null): HTMLElement {
       const paneId = kind === 'here' ? 'spawn:here' : 'spawn:worktree'
       const row = document.createElement('div')
       row.className = 'agent-row spawn-row'
@@ -1155,12 +1180,12 @@ function boot(): void {
 
       const hint = document.createElement('span')
       hint.className = 'spawn-hint'
-      hint.textContent = kind === 'here' ? 'split pane' : 'new worktree'
+      hint.textContent = spawnHint(kind, devLabel)
 
       row.title =
         kind === 'here'
-          ? focusedLabel !== null
-            ? `Split a pane next to the dev server, in ${focusedLabel}`
+          ? devLabel !== null
+            ? `Split a pane next to the dev server, in ${devLabel}`
             : 'Split a pane next to the dev server'
           : 'Create a fresh herdr worktree workspace and start an agent there'
 
@@ -1193,22 +1218,19 @@ function boot(): void {
       if (!state.herdr) {
         selectableAgentIds = []
         selectedPaneId = null
-        spawnGroup.hidden = true
         showAgentsNotice(`herdr not reachable (${state.reason}): Enter copies the prompt`)
         updateSelection()
         clampPopup()
         return
       }
 
-      spawnGroup.hidden = false
       const groups = groupAgents(state)
       selectableAgentIds = [...selectableIds(groups), 'spawn:here', 'spawn:worktree']
       selectedPaneId = pickAgent(state, readLast())
       // "+ agent here" splits a pane next to the dev server's own, i.e. in
       // its workspace - not necessarily whichever workspace herdr currently
-      // has focused - so the tooltip below names that one specifically.
-      const devWorkspace = state.workspaces.find((w) => w.workspace_id === state.workspaceId)
-      const devWorkspaceLabel = devWorkspace?.label ?? state.workspaceId
+      // has focused - so the hint and tooltip below name that one specifically.
+      const devLabel = devWorkspaceLabel(state)
 
       for (const group of groups) {
         const wsLabel = group.workspace.label ?? group.workspace.workspace_id
@@ -1234,7 +1256,7 @@ function boot(): void {
         agentsGroups.appendChild(groupEl)
       }
 
-      spawnGroup.append(renderSpawnRow('here', devWorkspaceLabel), renderSpawnRow('worktree', devWorkspaceLabel))
+      spawnGroup.append(renderSpawnRow('here', devLabel), renderSpawnRow('worktree', devLabel))
 
       hideAgentsNotice()
       updateSelection()
@@ -1518,6 +1540,11 @@ function boot(): void {
           const data = (await res.json()) as PromptResponse
           const sentPaneId = data.pane_id ?? target
           const stillTracking = inflightPaneId === target
+          // The 200 response itself is proof the agent is now working: flip
+          // the chip off "sending" even when no herdr:status push has (yet)
+          // said so - otherwise it reads "sending" until one arrives, which
+          // may never happen for a quiet agent.
+          if (stillTracking && !inflightSettled) renderInflightChip()
           // A herdr:status push can now race ahead of this very response (it
           // is forwarded before the response is even sent) and already have
           // shown its own settle toast; showing "Sent to ..." on top of that
@@ -1650,13 +1677,16 @@ function boot(): void {
         if (e.key === 'ArrowUp') {
           e.preventDefault()
           e.stopPropagation()
-          moveSelection(-1)
+          // Mirrors the Tab freeze above: while sending, the list stays
+          // dimmed and non-interactive, so arrowing must not expand it or
+          // move the selection either.
+          if (mode === 'popup') moveSelection(-1)
           return
         }
         if (e.key === 'ArrowDown') {
           e.preventDefault()
           e.stopPropagation()
-          moveSelection(1)
+          if (mode === 'popup') moveSelection(1)
           return
         }
         e.stopPropagation()

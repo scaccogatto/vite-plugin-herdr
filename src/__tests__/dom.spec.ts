@@ -13,6 +13,8 @@ import {
   describeElement,
   stripHintSuffix,
   popupPathLabel,
+  spawnHint,
+  truncateStart,
 } from '../client/dom.ts'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -464,6 +466,35 @@ describe('popupPathLabel', () => {
 
   it('normalizes a shadow-crossing separator to the same display separator', () => {
     expect(popupPathLabel('div.host >>> section >>> button#task-label')).toBe('in div.host › section')
+  })
+})
+
+describe('spawnHint', () => {
+  it('names the dev workspace for "here" when its label is known', () => {
+    expect(spawnHint('here', 'app')).toBe('split pane in app')
+  })
+
+  it('falls back to a generic hint for "here" when the label is unknown', () => {
+    expect(spawnHint('here', null)).toBe('split pane next to the dev server')
+  })
+
+  it('always reads "fresh worktree" for "worktree", label or not', () => {
+    expect(spawnHint('worktree', 'app')).toBe('fresh worktree')
+    expect(spawnHint('worktree', null)).toBe('fresh worktree')
+  })
+})
+
+describe('truncateStart', () => {
+  it('leaves a short value unchanged', () => {
+    expect(truncateStart('demo/Bench.vue:17:7', 60)).toBe('demo/Bench.vue:17:7')
+  })
+
+  it('truncates a long value from the start, keeping the tail intact', () => {
+    const long = '../../../../../../../Users/gatto/Developer/scaccogatto/vite-plugin-herdr/demo/Bench.vue:17:7'
+    const result = truncateStart(long, 60)
+    expect(result.length).toBe(60)
+    expect(result.startsWith('…')).toBe(true)
+    expect(result.endsWith('Bench.vue:17:7')).toBe(true)
   })
 })
 

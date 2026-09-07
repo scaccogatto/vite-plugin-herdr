@@ -21,7 +21,7 @@
 
 ## Send flow
 
-7. User types a prompt (max 20000 characters), optionally opens the agent list with `Down` (collapsed by default) and changes the selection with `Up`/`Down` (the To field mirrors every move), and presses `Enter` or clicks `Send` (`Shift+Enter` inserts a newline instead). Only one send is in flight at a time.
+7. User types a prompt (max 4000 characters in the popup; the server itself caps at 20000), optionally opens the agent list with `Up`/`Down` (collapsed by default) and changes the selection with `Up`/`Down` (the To field mirrors every move), and presses `Enter` or clicks `Send` (`Shift+Enter` inserts a newline instead). Only one send is in flight at a time.
 8. Client-side prompt composition is skipped when herdr is reachable, composition happens server-side instead so relative source hints can be resolved against `server.config.root`; the client sends `{ target, prompt, element, extras?, screenshot? }` as JSON to `POST {endpoint}/prompt` (`extras` and `screenshot` only when a multi-selection or the screenshot switch is in play, see the flows below). When the selected target is a spawn row instead of an agent, the spawn flow below runs first and its resulting pane id becomes `target`.
 9. The dev server validates same-origin (rejects 403), then JSON content-type, body size (256 KB cap, rejects 413), and shape via `validatePrompt` (rejects 400). Server resolves a relative `hint` to an absolute path via `absolutizeHint`, and composes the final prompt with `composePrompt`. Snippet/style payloads over `inlineMaxChars` (default 1500) are written to a markdown file first and referenced with a `Details: <path>` line.
 10. The server opens one connection to herdr's Unix socket, sends `agent.prompt {target, text}`, and closes it.
