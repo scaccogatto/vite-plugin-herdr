@@ -1,5 +1,9 @@
 # Update Log
 
+## 2026-09-09
+
+Roadmap's Chrome extension shipped as the separate `herdr-picker` project (Chrome MV3 extension + native messaging host, the plugin's client/server modules copied at f5ef5e1 and adapted there, no dependency between the repos, no localhost port). README, PRODUCT.md, docs/stack.md and `.okf/index.md` now point at it. No code change in this repository.
+
 ## 2026-09-07
 
 Demo GIF re-recorded once more so the story is true: after the send, the recording script edits `demo/Bench.vue` (Sumbit to Submit) so Vite HMR swaps the label in the page while the agent is working, then the DONE chip lands on the fixed button; the source is restored afterwards. Ten frames, 147 kB.

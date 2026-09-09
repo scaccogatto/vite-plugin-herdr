@@ -33,8 +33,9 @@ The only tool with a picker across live agent sessions. Neighbors are either clo
 - Zero runtime dependencies: Node stdlib only (`net`, `fs`, `os`, `path`, `crypto`, `child_process`) on the server side, no framework on the client (vanilla DOM in a shadow-DOM host)
 - Text-first payload always; the real-pixel screenshot is opt-in and ships only because the pre-registered benchmark promoted the outlined variant (`docs/payload.md`); no DOM-to-canvas re-render, ever
 - Shipped in 0.1.0: in-flight outline until the agent settles, multi-select with one shared comment (up to five elements), spawn a new agent from the popup, `appendTo` injection for Nuxt and SvelteKit, opt-in outlined screenshot on macOS
-- Confirmed Won't (for now): fake or re-rendered screenshots, a fixed localhost port as transport, a Chrome extension for pages you serve yourself (that is the extension's job for pages you do not serve)
-- Roadmap: a Chrome extension for pages the dev server does not serve; Astro and other meta-framework recipes beyond `appendTo`
+- Confirmed Won't (for now): fake or re-rendered screenshots, a fixed localhost port as transport, a Chrome extension for pages you serve yourself (that is herdr-picker's job for pages you do not serve)
+- Roadmap: Astro and other meta-framework recipes beyond `appendTo`
+- Sibling project: [herdr-picker](https://github.com/scaccogatto/herdr-picker), the same picker as a Chrome extension plus a native messaging host for pages the dev server does not serve; separate repository, no dependency in either direction, no localhost port
 
 ## Brand Commitments
 
@@ -49,7 +50,7 @@ Name `vite-plugin-herdr` (follows the `vite-plugin-*` npm naming convention; `he
 ## Product Principles
 
 1. **Text before pixels**: every capability starts from deterministic, greppable text; an image is added only when measured evidence says it earns its cost
-2. **The dev server is the whole bridge**: no new port, no daemon, no extension for pages you already serve
+2. **The dev server is the whole bridge for pages you serve**: no new port, no daemon, no extension; pages you do not serve belong to herdr-picker, which keeps the no-port rule through Chrome's native messaging
 3. **Same-origin is the security model**: no token, because a token would only re-authenticate a request that same-origin already trusts
 4. **Degrade, don't fail**: no herdr, old herdr, blocked agent, gone agent, every one of these is a handled state (clipboard, toast, disabled row), never a crash or a silent no-op
 5. **One real user before a thousand hypothetical**: features grow from the author's own herdr/Ghostty workflow first, then generalize for the open-source audience

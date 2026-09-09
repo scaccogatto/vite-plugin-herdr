@@ -27,7 +27,7 @@ plugins: [vue(), herdr()]
 - **The picker among live sessions.** herdr already knows every agent pane running in your terminal. The popup lists them grouped by workspace and preselects the one running next to this dev server, instead of assuming there is only one agent to talk to.
 - **Source hints so the agent lands on the file.** Dev-mode locator attributes (or a runtime fallback) resolve the picked element to `file:line:col` before the prompt is composed, so the agent opens the right file first, not `grep`.
 - **Text-first payload.** Source hint, selector path, trimmed markup with the picked node marked, computed styles, page URL: deterministic, small, greppable. No re-rendered screenshot pretending to be a source of truth.
-- **Zero infrastructure.** No browser extension, no new port, no daemon. The dev server you already run is the bridge to herdr's Unix socket.
+- **Zero infrastructure.** No new port, no daemon, no extension for pages you serve. The dev server you already run is the bridge to herdr's Unix socket.
 - **Safe by construction.** Same-origin only, dev builds only (`apply: 'serve'`), page content is always treated as data, never as instructions.
 
 ## Quickstart
@@ -211,12 +211,14 @@ The screenshot didn't ship on a feeling: a pre-registered protocol, fixed before
 
 Only the outlined screenshot clears the decision rule (≥15-point success gain or ≥25% fewer turns, no regression), so it's the only image variant that ships, opt-in.
 
+
+## Any page: herdr-picker
+
+For pages this dev server does not serve (another framework's dev server, staging, production, a third-party site you want as a reference), the same picker ships as a Chrome extension: [herdr-picker](https://github.com/scaccogatto/herdr-picker). Install the extension, run `npx herdr-picker install-host` once, press `Ctrl+B` on any page. Same popup, same payload (`Focus: none, find by selector` when the page carries no source hints), a cross-platform outlined screenshot captured by Chrome, and still no localhost port: Chrome spawns the native host and only the extension may talk to it. It is a separate project with no code shared at runtime; fixes are ported by hand in either direction.
+
 ## Roadmap
 
-- Chrome extension for pages you don't serve
-- Astro recipe beyond `appendTo`
-
-## Development
+- Astro and other meta-framework recipes beyond `appendTo`
 
 ```sh
 npm i              # install

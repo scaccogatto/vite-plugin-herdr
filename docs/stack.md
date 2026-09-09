@@ -23,7 +23,7 @@ Versus a Chrome extension:
 - **Source hints for free.** Dev-mode locator plugins (vite-plugin-vue-inspector, code-inspector-plugin, agent-source-locator) already inject `file:line:col` attributes into the DOM Vite serves; an extension sees only the rendered page, with no compile-time information.
 - **The bridge is also the screenshot rig.** The dev server process is the one already positioned to shell out to `screencapture`; the pre-registered payload benchmark ([docs/payload.md](payload.md)) found the outlined screenshot worth shipping (+20 points visual success, 23% fewer turns), and a Vite plugin needed zero new infrastructure to fire it.
 
-The extension stays the right answer for pages you don't serve yourself: production sites, third-party apps, anything not running through your own Vite dev server. That's parked, not rejected, see [Roadmap](../README.md#roadmap).
+Pages you don't serve yourself (production sites, third-party apps, anything not running through your own Vite dev server) are [herdr-picker](https://github.com/scaccogatto/herdr-picker)'s job: a separate project, a Chrome extension plus a native messaging host, no localhost port (Chrome spawns the host and only the extension's id may reach it), no code shared at runtime with this plugin. "One piece instead of three" above still holds here; herdr-picker pays for the three pieces once, for every page. Chrome's Local Network Access (shipped in 142, see below) makes the no-port stance matter more, not less.
 
 ## Evaluated alternatives (2026-09-07)
 
