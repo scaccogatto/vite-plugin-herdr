@@ -112,7 +112,7 @@ export async function startDemo(opts: StartDemoOptions): Promise<DemoServer> {
   const prevEnv: Record<string, string | undefined> = {}
   // inspector v7 disables itself when NODE_ENV is 'test', which is what Playwright sets;
   // these tests drive a real dev server, so say so and let it inject data-v-inspector.
-  for (const [key, value] of Object.entries({ NODE_ENV: 'development', ...(opts.env ?? {}) })) {
+  for (const [key, value] of Object.entries(Object.assign({ NODE_ENV: 'development' }, opts.env))) {
     prevEnv[key] = process.env[key]
     process.env[key] = value
   }
