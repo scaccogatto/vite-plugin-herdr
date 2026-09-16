@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     root: demoRoot,
     plugins: [
       vue(),
-      inspector({ enabled: false, toggleButtonVisibility: 'never', toggleComboKey: false, cleanHtml: false }),
+      inspector({ enabled: false, toggleButtonVisibility: 'never', toggleComboKey: false }),
       herdr({ socketPath }),
     ],
     server: { port: 0, host: '127.0.0.1' },

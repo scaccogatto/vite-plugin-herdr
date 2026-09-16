@@ -110,7 +110,9 @@ export async function startDemo(opts: StartDemoOptions): Promise<DemoServer> {
   assertExplicitSocketPath(socketPath)
 
   const prevEnv: Record<string, string | undefined> = {}
-  for (const [key, value] of Object.entries(opts.env ?? {})) {
+  // inspector v7 disables itself when NODE_ENV is 'test', which is what Playwright sets;
+  // these tests drive a real dev server, so say so and let it inject data-v-inspector.
+  for (const [key, value] of Object.entries({ NODE_ENV: 'development', ...(opts.env ?? {}) })) {
     prevEnv[key] = process.env[key]
     process.env[key] = value
   }
@@ -122,7 +124,7 @@ export async function startDemo(opts: StartDemoOptions): Promise<DemoServer> {
     server: { port: 0, host: '127.0.0.1' },
     plugins: [
       vue(),
-      inspector({ enabled: false, toggleButtonVisibility: 'never', toggleComboKey: false, cleanHtml: false }),
+      inspector({ enabled: false, toggleButtonVisibility: 'never', toggleComboKey: false }),
       herdr({ ...opts.plugin, socketPath }),
     ],
   })
