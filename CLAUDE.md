@@ -7,7 +7,7 @@ Vite dev-only plugin: injects a DOM element picker into the served page and send
 - `npm run build`: Build the plugin and client modules (two modes: Node, then Client)
 - `npm run typecheck`: Run TypeScript strict checks
 - `npm run coverage`: Run tests with coverage
-- `npm run lint`: Check code style with ESLint
+- `npm run lint`: Check code style with oxlint
 - `npm run dev-demo`: Start the demo app in dev mode
 - `npm run build-demo`: Build the demo app
 - `npm run e2e`: Run Playwright end-to-end tests

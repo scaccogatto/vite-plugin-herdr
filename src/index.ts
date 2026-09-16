@@ -79,7 +79,7 @@ export function resolveOptions(options: Options): ResolvedOptions {
     ...options,
     snippet: {
       ...defaults.snippet,
-      ...(options.snippet || {}),
+      ...options.snippet,
     },
   }
 }

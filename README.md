@@ -223,7 +223,7 @@ For pages this dev server does not serve (another framework's dev server, stagin
 ```sh
 npm i              # install
 npm run dev-demo   # demo app with the plugin injected
-npm run lint       # eslint (flat config)
+npm run lint       # oxlint
 npm run typecheck  # tsc --noEmit + vue-tsc on the demo
 npm test           # vitest
 npm run coverage   # vitest with coverage
