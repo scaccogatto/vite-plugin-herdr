@@ -77,7 +77,10 @@ export function resolveOptions(options: Options): ResolvedOptions {
   return {
     ...defaults,
     ...options,
-    snippet: Object.assign({}, defaults.snippet, options.snippet),
+    snippet: {
+      ...defaults.snippet,
+      ...options.snippet,
+    },
   }
 }
 
