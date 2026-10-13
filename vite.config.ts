@@ -41,14 +41,17 @@ export default defineConfig(({ mode }) => {
         external: [/^node:/, 'vite'],
       },
       minify: false,
-      target: 'node20',
+      target: 'node22.12',
     },
     test: {
       include: ['src/__tests__/**/*.spec.ts'],
       coverage: {
         provider: 'v8',
         include: ['src/**'],
-        exclude: ['src/__tests__/**'],
+        // The client entry wires the DOM popup, picker and transport together
+        // and is covered by the Playwright suites in e2e/, not by unit tests;
+        // its pure helpers (dom.ts, agents.ts) stay in the unit coverage.
+        exclude: ['src/__tests__/**', 'src/client/index.ts'],
         reporter: ['text', 'json-summary'],
       },
     },
