@@ -5,7 +5,7 @@ description: Executable steps to cut v0.1.0 and later releases, plus Conventiona
 tags: [release, versioning, npm, conventional-commits, runbook]
 generated:
   by: claude/fable-5-1
-  at: 2026-09-07
+  at: 2026-10-13
 status: stable
 sources:
   - resource: ../CHANGELOG.md
@@ -24,7 +24,7 @@ sources:
    git tag v0.1.0
    git push origin v0.1.0
    ```
-4. **The release workflow does the rest, without any token.** `.github/workflows/release.yml` fires on the `v*` tag push (or a manual `workflow_dispatch`): `npm ci`, `npm run build`, then `npm publish --provenance` with `id-token: write`. The workflow is registered on npmjs.com as the package's trusted publisher, so npm exchanges the GitHub OIDC identity for a short-lived publish credential; nothing is stored in the repo, in GitHub secrets or on any machine. Never add `NODE_AUTH_TOKEN` to the publish step: with a token present npm skips OIDC. Trusted publishing needs npm 11.5.1 or later, which is why the workflow installs `npm@latest` before publishing.
+4. **The release workflow does the rest, without any token.** `.github/workflows/release.yml` fires on the `v*` tag push only (no `workflow_dispatch`), in the GitHub environment `npm` (created by the IaC root with a deployment policy that admits only `v*` tags). It fails when the tag is not `v` + `package.json`'s version, then runs `npm ci`, lint, typecheck, tests and build, then `npm publish --provenance` with `id-token: write`. The workflow is registered on npmjs.com as the package's trusted publisher, so npm exchanges the GitHub OIDC identity for a short-lived publish credential; nothing is stored in the repo, in GitHub secrets or on any machine. Never add `NODE_AUTH_TOKEN` to the publish step: with a token present npm skips OIDC. Trusted publishing needs npm 11.5.1 or later: the workflow pins an exact Node (24.21.0, bundling npm 11.19.0) and asserts the npm floor, so it never installs npm at publish time. The npm-side trusted publisher names no environment, so it does not constrain the job's environment claim; if a publish ever fails with a 404 on the OIDC exchange, set the environment to `npm` there as well.
 5. **Bootstrap, one time, by hand, no token stored anywhere.** A trusted publisher attaches to a package that already exists (npm/cli#8544 tracks first-publish support), so the first version is published from a maintainer's machine with the account's 2FA:
    - `npm login` (browser flow), then from a clean checkout of the tagged commit: `npm run build` and `npm publish` (npm asks for 2FA in the browser; without provenance, which only CI can attest).
    - On npmjs.com, package `vite-plugin-herdr`, Settings, Trusted publishing: GitHub Actions, organization or user `scaccogatto`, repository `vite-plugin-herdr`, workflow filename `release.yml`, no environment, allow `npm publish`. Then Publishing access: "Require two-factor authentication and disallow tokens", so no token can ever publish this package again.

@@ -1,14 +1,14 @@
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { chmod, lstat, mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { ViteDevServer } from 'vite'
 import { composePrompt, renderAttachment } from './compose.ts'
 import { HerdrError, httpStatus, request, resolveSocketPath, subscribe } from './herdr.ts'
-import { HttpError, isSameOrigin, readJson, sendJson, validatePrompt } from './http.ts'
+import { HttpError, isLocalRequest, isSameOrigin, readJson, sendJson, validatePrompt } from './http.ts'
 import type {
   AgentRow,
   AgentStatus,
@@ -34,10 +34,38 @@ export interface ServerOptions {
   screenshot?: boolean | 'auto'
   /** Command used to capture the screenshot; defaults to 'screencapture' */
   screenshotCommand?: string
+  /** Accepts requests from non-loopback peers; defaults to false (loopback only) */
+  allowRemote?: boolean
 }
 
-/** Default directory for oversized element snippet attachments */
-export const ATTACHMENT_DIR = join(tmpdir(), 'vite-plugin-herdr')
+/**
+ * Default directory for oversized element snippet attachments and screenshots.
+ * The name carries the uid where there is one, so users sharing /tmp on a
+ * Linux host never share (or fight over) the same directory.
+ */
+export const ATTACHMENT_DIR = join(tmpdir(), typeof process.getuid === 'function' ? `vite-plugin-herdr-${process.getuid()}` : 'vite-plugin-herdr')
+
+/**
+ * Creates dir (mode 0700) if missing, then checks that it is a real directory
+ * (not a symlink) owned by the current user, and drops any group or other
+ * permission bits left by an older version; throws when another user owns it,
+ * since that user could read the captured page markup or swap a file before
+ * the agent reads it
+ */
+export async function ensurePrivateDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true, mode: 0o700 })
+
+  const info = await lstat(dir)
+  if (!info.isDirectory()) {
+    throw new Error(`attachment directory ${dir} is not a directory`)
+  }
+  if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
+    throw new Error(`attachment directory ${dir} is owned by another user`)
+  }
+  if ((info.mode & 0o077) !== 0) {
+    await chmod(dir, 0o700)
+  }
+}
 
 function str(x: unknown): string | null {
   return typeof x === 'string' ? x : null
@@ -193,9 +221,9 @@ export async function getState(
 
 /** Writes an attachment markdown file under dir, returning its absolute path */
 export async function writeAttachment(content: string, dir: string): Promise<string> {
-  await mkdir(dir, { recursive: true })
+  await ensurePrivateDir(dir)
   const filePath = join(dir, `${Date.now()}-${randomBytes(3).toString('hex')}.md`)
-  await writeFile(filePath, content, 'utf8')
+  await writeFile(filePath, content, { encoding: 'utf8', mode: 0o600, flag: 'wx' })
   return filePath
 }
 
@@ -253,7 +281,7 @@ export async function postPrompt(
   if (body.screenshot && opts.screenshotEnabled) {
     const file = join(opts.attachmentDir, `${Date.now()}-${randomBytes(3).toString('hex')}.png`)
     try {
-      await mkdir(opts.attachmentDir, { recursive: true })
+      await ensurePrivateDir(opts.attachmentDir)
       await captureScreenshot(screenRegion(body.screenshot), file, opts.screenshotCommand)
       screenshotPath = file
     } catch (err) {
@@ -468,10 +496,23 @@ export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
   const roots = [...new Set([root, process.cwd(), dirname(root)])]
   const screenshotAvail = screenshotAvailability(opts.screenshot)
   const screenshotCommand = opts.screenshotCommand ?? 'screencapture'
+  const allowRemote = opts.allowRemote ?? false
 
   cleanupAttachments(attachmentDir).catch(() => {})
 
   server.middlewares.use(mount, async (req, res, next) => {
+    // Network guard: the peer address, unlike any header, is not chosen by the
+    // client, so `vite --host` or a port mapping cannot expose the agents.
+    // Tunnels and reverse proxies connect from loopback, so a request that
+    // carries proxy headers counts as remote too. A plain TCP forwarder
+    // (ssh -R, socat) adds no headers and is not detected.
+    if (!allowRemote && !isLocalRequest(req.socket.remoteAddress, req.headers)) {
+      sendJson(res, 403, { error: 'forbidden', message: 'local clients only: loopback, no proxy or tunnel (set allowRemote to accept remote clients)' })
+      return
+    }
+
+    // Browser guard (CSRF): another page open in the same browser cannot
+    // forge Sec-Fetch-Site or Origin.
     if (!isSameOrigin(req.headers)) {
       sendJson(res, 403, { error: 'forbidden', message: 'same-origin only' })
       return

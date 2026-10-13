@@ -13,6 +13,12 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # TypeScript 7 drops the JS API that vite-plugin-dts and api-extractor
+      # use for the bundled declarations: stay on 6 until they support it.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions

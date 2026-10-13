@@ -47,6 +47,6 @@ Errors: timeout, ENOENT (socket missing), protocol error (can't parse JSON), age
 
 ## Endpoint Guards
 
-`isSameOrigin(req.headers)`: check `Sec-Fetch-Site: same-origin` or `Origin` host matches `Host`. Reject 403 if missing or mismatch. Fallback: Safari old versions without `Sec-Fetch-Site` receive 403.
+`isLocalRequest(req.socket.remoteAddress, req.headers)` first (unless `allowRemote`): reject 403 for any non-loopback peer and for a loopback request carrying reverse proxy or tunnel headers. Then `isSameOrigin(req.headers)`: check `Sec-Fetch-Site: same-origin` or `Origin` host matches `Host`. Reject 403 if missing or mismatch. Fallback: Safari old versions without `Sec-Fetch-Site` receive 403.
 
 Windows: `HERDR_SOCKET_PATH` required; socket APIs differ. Clipboard fallback on failure.

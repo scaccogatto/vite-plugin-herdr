@@ -14,7 +14,9 @@ export class HttpError extends Error {
 
 /**
  * True when the request came from the same origin as the dev server:
- * Sec-Fetch-Site: same-origin, or an Origin header whose host matches Host
+ * Sec-Fetch-Site: same-origin, or an Origin header whose host matches Host.
+ * This is a browser-side (CSRF) guard only: both headers are set freely by
+ * non-browser clients, so network reach is restricted by isLoopbackAddress.
  */
 export function isSameOrigin(headers: IncomingHttpHeaders): boolean {
   if (headers['sec-fetch-site'] === 'same-origin') return true
@@ -27,6 +29,47 @@ export function isSameOrigin(headers: IncomingHttpHeaders): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * True when a socket's remote address is the loopback interface: 127.0.0.0/8,
+ * ::1, or an IPv4-mapped loopback (::ffff:127.x.x.x). Unlike the request
+ * headers, the peer address cannot be chosen by the client.
+ */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (address === undefined) return false
+  if (address === '::1') return true
+  const v4 = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4)
+}
+
+/**
+ * Headers a reverse proxy or tunnel adds when it forwards a request. Tunnels
+ * such as ngrok, cloudflared or VS Code port forwarding run a local agent
+ * that connects to the dev server over loopback, so the peer address alone
+ * would let anyone holding the public URL through.
+ */
+export const PROXY_HEADERS = [
+  'forwarded',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-real-ip',
+  'cf-connecting-ip',
+  'true-client-ip',
+] as const
+
+/** True when the request carries a header that a reverse proxy or tunnel adds */
+export function hasProxyHeaders(headers: IncomingHttpHeaders): boolean {
+  return PROXY_HEADERS.some((name) => headers[name] !== undefined)
+}
+
+/**
+ * True when the request reached the dev server directly from this machine: a
+ * loopback peer address and no reverse proxy or tunnel headers. A plain TCP
+ * forwarder (ssh -R, socat) adds no headers and is not detected.
+ */
+export function isLocalRequest(address: string | undefined, headers: IncomingHttpHeaders): boolean {
+  return isLoopbackAddress(address) && !hasProxyHeaders(headers)
 }
 
 /** Reads and parses a JSON request body, enforcing content-type and a byte cap */

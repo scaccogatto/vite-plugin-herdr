@@ -35,6 +35,17 @@ export interface Options {
    * `screencapture`; override only to point at a test double.
    */
   screenshotCommand?: string
+  /**
+   * Accepts bridge requests from clients that are not on the loopback
+   * interface, or that came through a reverse proxy or tunnel (a request
+   * carrying `Forwarded`, `X-Forwarded-For` and similar headers). Off by
+   * default: with `vite --host`, a container port mapping or an HTTP tunnel,
+   * anyone who reaches the dev server could otherwise send prompts to (and
+   * spawn) agents that run shell commands on this machine. A plain TCP
+   * forwarder (`ssh -R`, `socat`) adds no headers and is not detected.
+   * Turn it on only on a network you trust.
+   */
+  allowRemote?: boolean
 }
 
 /** Resolved options with all defaults applied */
@@ -67,6 +78,7 @@ export function resolveOptions(options: Options): ResolvedOptions {
     appendTo: undefined,
     screenshot: 'auto',
     screenshotCommand: 'screencapture',
+    allowRemote: false,
     snippet: {
       maxDepth: 3,
       maxLines: 60,
@@ -130,6 +142,7 @@ export default function herdr(options: Options = {}): Plugin {
         inlineMaxChars: resolved.snippet.inlineMaxChars,
         screenshot: resolved.screenshot,
         screenshotCommand: resolved.screenshotCommand,
+        allowRemote: resolved.allowRemote,
       })
     },
 
