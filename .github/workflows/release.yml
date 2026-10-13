@@ -2,23 +2,52 @@ name: Release
 on:
   push:
     tags: ['v*']
-  workflow_dispatch:
+permissions: {}
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The IaC root creates this environment with a deployment policy that only
+    # admits v* tags. npm's trusted publisher config names no environment, and
+    # npm only matches the environment claim when one is configured there.
+    environment: npm
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Exact Node pin: its bundled npm (11.19.0) meets trusted publishing's
+      # floor (npm 11.5.1, Node 22.14.0), so npm itself is never upgraded here.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
-          cache: npm
+          node-version: 24.21.0
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+      - name: Check npm supports trusted publishing
+        run: |
+          node -e '
+            const [a, b, c] = process.argv[1].split(".").map(Number)
+            const ok = a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1)))
+            if (!ok) { console.error("::error::npm " + process.argv[1] + " is below 11.5.1"); process.exit(1) }
+          ' "$(npm -v)"
+      - name: Check tag matches package.json version
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json $VERSION"
+            exit 1
+          fi
       - run: npm ci
-      - run: npm run build
-      - run: npm install -g npm@latest
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
       - name: Check if version is already published
         id: check
         run: |
