@@ -1,7 +1,7 @@
 ---
 type: Policy
 title: Security boundaries
-description: Loopback and same-origin guards on socket access; client-side page content treated as data, not code
+description: Loopback, proxy header and same-origin guards on socket access; client-side page content treated as data, not code
 tags: [security, loopback, same-origin, csrf, data-handling]
 generated:
   by: claude/fable-5
@@ -14,7 +14,9 @@ sources:
 
 ## Implemented Guards
 
-**Loopback check** (`src/http.ts`, `src/server.ts`): `isLoopbackAddress(req.socket.remoteAddress)` accepts only `127.0.0.0/8`, `::1` and `::ffff:127.x.x.x`; the server rejects anything else with 403 before any other check, unless the `allowRemote` option is `true`. This is the network boundary: the TCP peer address is the one input a client cannot choose, so `vite --host`, a tunnel or a container port mapping no longer exposes `/prompt` and `/spawn` (arbitrary text into agents that run shell commands) to the network.
+**Loopback check** (`src/http.ts`, `src/server.ts`): `isLoopbackAddress(req.socket.remoteAddress)` accepts only `127.0.0.0/8`, `::1` and `::ffff:127.x.x.x`; the server rejects anything else with 403 before any other check, unless the `allowRemote` option is `true`. This is the network boundary: the TCP peer address is the one input a client cannot choose, so `vite --host` or a container port mapping no longer exposes `/prompt` and `/spawn` (arbitrary text into agents that run shell commands) to the network.
+
+**Proxy header check** (`src/http.ts`, `src/server.ts`): HTTP tunnels (ngrok, cloudflared, VS Code port forwarding) and local reverse proxies connect to the dev server from loopback, so `isLocalRequest(address, headers)` also requires that none of `PROXY_HEADERS` (`Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP`) is present. Known gap: a plain TCP forwarder (`ssh -R`, `socat`) adds no headers and looks exactly like a local client, so it is not covered and the docs tell users not to expose the dev server that way.
 
 **Same-origin check** (`src/http.ts`, `src/server.ts`): `isSameOrigin(headers)` returns true if `Sec-Fetch-Site: same-origin` or `Origin` header host matches `Host`; server rejects 403 otherwise. This is a browser (CSRF) guard only: non-browser clients set both headers freely. No fallback for Safari without `Sec-Fetch-Site` (older versions treated as same-origin violations). Deliberately no auth token: a loopback, same-origin request comes from the served page or from a local process that could already reach the herdr socket directly, so a token adds secret management overhead with no additional safety.
 

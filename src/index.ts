@@ -37,9 +37,12 @@ export interface Options {
   screenshotCommand?: string
   /**
    * Accepts bridge requests from clients that are not on the loopback
-   * interface. Off by default: with `vite --host`, a tunnel or a container
-   * port mapping, anyone who reaches the dev server could otherwise send
-   * prompts to (and spawn) agents that run shell commands on this machine.
+   * interface, or that came through a reverse proxy or tunnel (a request
+   * carrying `Forwarded`, `X-Forwarded-For` and similar headers). Off by
+   * default: with `vite --host`, a container port mapping or an HTTP tunnel,
+   * anyone who reaches the dev server could otherwise send prompts to (and
+   * spawn) agents that run shell commands on this machine. A plain TCP
+   * forwarder (`ssh -R`, `socat`) adds no headers and is not detected.
    * Turn it on only on a network you trust.
    */
   allowRemote?: boolean

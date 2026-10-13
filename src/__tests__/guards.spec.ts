@@ -1,7 +1,8 @@
 import { mkdtempSync, mkdirSync, statSync, symlinkSync } from 'node:fs'
 import { chmod } from 'node:fs/promises'
-import type { IncomingMessage, ServerResponse } from 'node:http'
-import { tmpdir } from 'node:os'
+import { createServer, request, type IncomingMessage, type ServerResponse } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Connect, ViteDevServer } from 'vite'
 import { describe, it, expect } from 'vitest'
@@ -78,6 +79,21 @@ describe('mountRoutes network guard', () => {
     expect(result.nextCalled).toBe(true)
   })
 
+  it.each([
+    ['x-forwarded-for', '203.0.113.7'],
+    ['forwarded', 'for=203.0.113.7;host=abc.ngrok.app'],
+    ['cf-connecting-ip', '203.0.113.7'],
+  ])('rejects a loopback request carrying %s (tunnel or reverse proxy) with 403', async (name, value) => {
+    const result = await run(mountedHandler(), '127.0.0.1', { ...sameOrigin, [name]: value })
+    expect(result.status).toBe(403)
+    expect(result.nextCalled).toBe(false)
+  })
+
+  it('accepts a proxied request when allowRemote is true', async () => {
+    const result = await run(mountedHandler(true), '127.0.0.1', { ...sameOrigin, 'x-forwarded-for': '203.0.113.7' })
+    expect(result.nextCalled).toBe(true)
+  })
+
   it('still rejects a cross-origin request from loopback', async () => {
     const result = await run(mountedHandler(), '127.0.0.1', { origin: 'http://evil.example', host: 'localhost:5173' })
     expect(result.status).toBe(403)
@@ -88,6 +104,62 @@ describe('mountRoutes network guard', () => {
     const handler = mountedHandler(true)
     expect((await run(handler, '192.168.1.5', sameOrigin)).nextCalled).toBe(true)
     expect((await run(handler, '192.168.1.5', { host: 'localhost:5173' })).status).toBe(403)
+  })
+})
+
+/** First non-internal IPv4 address of this machine, when it has one */
+function lanAddress(): string | undefined {
+  return Object.values(networkInterfaces())
+    .flatMap((entries) => entries ?? [])
+    .find((entry) => entry.family === 'IPv4' && !entry.internal)?.address
+}
+
+/** Sends a GET over a real TCP connection and resolves with the status code */
+function get(host: string, port: number, headers: Record<string, string>): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = request({ host, port, path: '/unknown', headers }, (res) => {
+      res.resume()
+      res.on('end', () => resolve(res.statusCode ?? 0))
+    })
+    req.on('error', reject)
+    req.end()
+  })
+}
+
+describe('mountRoutes network guard over a real socket', () => {
+  const lan = lanAddress()
+
+  async function listen(): Promise<{ port: number; close: () => Promise<void> }> {
+    const handler = mountedHandler()
+    const server = createServer((req, res) => {
+      void handler(req, res, () => {
+        res.statusCode = 404
+        res.end()
+      })
+    })
+    await new Promise<void>((resolve) => server.listen(0, '0.0.0.0', resolve))
+    const { port } = server.address() as AddressInfo
+    return { port, close: () => new Promise((resolve) => server.close(() => resolve())) }
+  }
+
+  it('lets a same-origin request from 127.0.0.1 through and rejects one carrying X-Forwarded-For', async () => {
+    const { port, close } = await listen()
+    try {
+      const headers = { 'sec-fetch-site': 'same-origin' }
+      expect(await get('127.0.0.1', port, headers)).toBe(404)
+      expect(await get('127.0.0.1', port, { ...headers, 'x-forwarded-for': '203.0.113.7' })).toBe(403)
+    } finally {
+      await close()
+    }
+  })
+
+  it.runIf(lan !== undefined)('rejects a same-origin request that reaches the server through a non-loopback interface', async () => {
+    const { port, close } = await listen()
+    try {
+      expect(await get(lan as string, port, { 'sec-fetch-site': 'same-origin' })).toBe(403)
+    } finally {
+      await close()
+    }
   })
 })
 

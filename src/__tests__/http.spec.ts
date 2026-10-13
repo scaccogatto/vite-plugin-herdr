@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import { describe, it, expect } from 'vitest'
-import { HttpError, isLoopbackAddress, isSameOrigin, readJson, sendJson, validatePrompt } from '../http.ts'
+import { HttpError, hasProxyHeaders, isLocalRequest, isLoopbackAddress, isSameOrigin, readJson, sendJson, validatePrompt } from '../http.ts'
 import type { ElementInfo, PromptRequest, ScreenshotRequest } from '../types.ts'
 
 function fixtureElement(overrides?: Partial<ElementInfo>): ElementInfo {
@@ -66,6 +66,37 @@ describe('isLoopbackAddress', () => {
 
   it('is false when the address is unknown (destroyed socket)', () => {
     expect(isLoopbackAddress(undefined)).toBe(false)
+  })
+})
+
+describe('hasProxyHeaders', () => {
+  it.each([
+    ['forwarded', 'for=203.0.113.7'],
+    ['x-forwarded-for', '203.0.113.7'],
+    ['x-forwarded-host', 'abc.ngrok.app'],
+    ['x-real-ip', '203.0.113.7'],
+    ['cf-connecting-ip', '203.0.113.7'],
+    ['true-client-ip', '203.0.113.7'],
+  ])('is true when %s is set', (name, value) => {
+    expect(hasProxyHeaders({ host: 'localhost:5173', [name]: value })).toBe(true)
+  })
+
+  it('is false for a direct browser request', () => {
+    expect(hasProxyHeaders({ host: 'localhost:5173', 'sec-fetch-site': 'same-origin' })).toBe(false)
+  })
+})
+
+describe('isLocalRequest', () => {
+  it('is true for a loopback peer without proxy headers', () => {
+    expect(isLocalRequest('127.0.0.1', { host: 'localhost:5173' })).toBe(true)
+  })
+
+  it('is false for a loopback peer that a tunnel agent forwarded', () => {
+    expect(isLocalRequest('127.0.0.1', { host: 'localhost:5173', 'x-forwarded-for': '203.0.113.7' })).toBe(false)
+  })
+
+  it('is false for a non-loopback peer', () => {
+    expect(isLocalRequest('192.168.1.5', { host: 'localhost:5173' })).toBe(false)
   })
 })
 

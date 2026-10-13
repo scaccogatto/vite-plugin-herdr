@@ -43,6 +43,35 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4)
 }
 
+/**
+ * Headers a reverse proxy or tunnel adds when it forwards a request. Tunnels
+ * such as ngrok, cloudflared or VS Code port forwarding run a local agent
+ * that connects to the dev server over loopback, so the peer address alone
+ * would let anyone holding the public URL through.
+ */
+export const PROXY_HEADERS = [
+  'forwarded',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-real-ip',
+  'cf-connecting-ip',
+  'true-client-ip',
+] as const
+
+/** True when the request carries a header that a reverse proxy or tunnel adds */
+export function hasProxyHeaders(headers: IncomingHttpHeaders): boolean {
+  return PROXY_HEADERS.some((name) => headers[name] !== undefined)
+}
+
+/**
+ * True when the request reached the dev server directly from this machine: a
+ * loopback peer address and no reverse proxy or tunnel headers. A plain TCP
+ * forwarder (ssh -R, socat) adds no headers and is not detected.
+ */
+export function isLocalRequest(address: string | undefined, headers: IncomingHttpHeaders): boolean {
+  return isLoopbackAddress(address) && !hasProxyHeaders(headers)
+}
+
 /** Reads and parses a JSON request body, enforcing content-type and a byte cap */
 export async function readJson(req: IncomingMessage, maxBytes: number): Promise<unknown> {
   const contentType = req.headers['content-type']

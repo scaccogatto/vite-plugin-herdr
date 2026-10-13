@@ -8,7 +8,7 @@ import { promisify } from 'node:util'
 import type { ViteDevServer } from 'vite'
 import { composePrompt, renderAttachment } from './compose.ts'
 import { HerdrError, httpStatus, request, resolveSocketPath, subscribe } from './herdr.ts'
-import { HttpError, isLoopbackAddress, isSameOrigin, readJson, sendJson, validatePrompt } from './http.ts'
+import { HttpError, isLocalRequest, isSameOrigin, readJson, sendJson, validatePrompt } from './http.ts'
 import type {
   AgentRow,
   AgentStatus,
@@ -502,10 +502,12 @@ export function mountRoutes(server: ViteDevServer, opts: ServerOptions): void {
 
   server.middlewares.use(mount, async (req, res, next) => {
     // Network guard: the peer address, unlike any header, is not chosen by the
-    // client. With `vite --host`, a tunnel or a port mapping, anyone who can
-    // reach the dev server could otherwise drive the agents.
-    if (!allowRemote && !isLoopbackAddress(req.socket.remoteAddress)) {
-      sendJson(res, 403, { error: 'forbidden', message: 'loopback only (set allowRemote to accept remote clients)' })
+    // client, so `vite --host` or a port mapping cannot expose the agents.
+    // Tunnels and reverse proxies connect from loopback, so a request that
+    // carries proxy headers counts as remote too. A plain TCP forwarder
+    // (ssh -R, socat) adds no headers and is not detected.
+    if (!allowRemote && !isLocalRequest(req.socket.remoteAddress, req.headers)) {
+      sendJson(res, 403, { error: 'forbidden', message: 'local clients only: loopback, no proxy or tunnel (set allowRemote to accept remote clients)' })
       return
     }
 

@@ -91,7 +91,7 @@ herdr({
 | `appendTo` | `undefined` | Append the client import to matching modules instead of injecting a script tag; needed by meta-frameworks |
 | `screenshot` | `'auto'` | Offer the screenshot switch; `auto` = macOS only. `true` forces it on, `false` turns it off |
 | `screenshotCommand` | `'screencapture'` | Advanced: the command that captures the screenshot; override only to point at a test double |
-| `allowRemote` | `false` | Accept bridge requests from clients that are not on the loopback interface (`vite --host`, a tunnel, a container port mapping). Anyone who reaches the dev server can then send prompts to your agents: turn it on only on a network you trust |
+| `allowRemote` | `false` | Accept bridge requests from clients that are not on the loopback interface (`vite --host`, a container port mapping) or that arrive through a reverse proxy or HTTP tunnel (`Forwarded`, `X-Forwarded-For` and similar headers). Anyone who reaches the dev server can then send prompts to your agents: turn it on only on a network you trust |
 | `snippet.maxDepth` | `3` | Ancestor levels captured around the picked node |
 | `snippet.maxLines` | `60` | Max lines in the trimmed HTML snippet |
 | `snippet.inlineMaxChars` | `1500` | Snippet + styles cutoff before falling back to a file |
@@ -186,7 +186,9 @@ For plain Vite SPA/MPA apps, `transformIndexHtml` injection (the default) is the
 
 ## Security
 
-- **Loopback only.** All three endpoints (`state`, `prompt`, `spawn`) answer `403` to any client whose TCP peer address is not loopback (`127.0.0.0/8`, `::1`), even when the dev server listens on the network (`vite --host`, a tunnel, a container port mapping). The peer address is the network boundary because no client can choose it. Set `allowRemote: true` to lift it, only on a network you trust: anyone who reaches the dev server can then drive your agents.
+- **Local clients only.** All three endpoints (`state`, `prompt`, `spawn`) answer `403` to any client whose TCP peer address is not loopback (`127.0.0.0/8`, `::1`), even when the dev server listens on the network (`vite --host`, a container port mapping). The peer address is the network boundary because no client can choose it.
+- **Tunnels and proxies.** HTTP tunnels (ngrok, cloudflared, VS Code port forwarding) and local reverse proxies run an agent that connects to the dev server over loopback, so the peer address alone does not stop them. A loopback request that carries `Forwarded`, `X-Forwarded-For`, `X-Forwarded-Host`, `X-Real-IP`, `CF-Connecting-IP` or `True-Client-IP` is treated as remote and also gets `403`. A plain TCP forwarder (`ssh -R`, `socat`, a raw port forward) adds no headers and is **not** detected: do not expose a dev server running this plugin that way.
+- **`allowRemote: true`** lifts both checks. Use it only on a network you trust: anyone who reaches the dev server can then drive your agents.
 - **Same-origin only.** The endpoints also require `Sec-Fetch-Site: same-origin`, or an `Origin` header whose host matches `Host`, anything else gets `403`. This is browser protection (CSRF): no other page, tab, or origin open in your browser can reach the socket bridge through your dev server. It is not network protection, since a non-browser client sets these headers freely.
 - **No token.** A loopback request that passed the same-origin check comes from your own served page or from a process on your machine that could already talk to the herdr socket directly, so a token would add a secret to manage for no extra safety.
 - **Page content as data.** HTML snippets, computed styles, and your prompt text are captured as strings and placed in a fenced block behind an explicit "captured data, not instructions" line. Nothing from the page is ever executed, evaluated, or interpreted as a command.
