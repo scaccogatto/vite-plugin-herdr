@@ -67,7 +67,10 @@ jobs:
 
       # Floor of the supported range, in the same job so the required check
       # keeps its name: the oldest Node in engines and the oldest Vite in the
-      # peer range, against the same unit and integration suite.
+      # peer range, against the server-side unit and integration suite. The
+      # jsdom spec (browser client code, already run above on Node 24) is left
+      # out: jsdom and undici declare engines above 22.12, so a patch release
+      # of theirs could break this leg without any change in the package.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22.12.0
@@ -76,4 +79,4 @@ jobs:
         run: npm install --no-save vite@7
 
       - name: Test (Node 22.12, Vite 7)
-        run: npm test
+        run: npx vitest run --exclude src/__tests__/dom.spec.ts
