@@ -14,7 +14,9 @@ export class HttpError extends Error {
 
 /**
  * True when the request came from the same origin as the dev server:
- * Sec-Fetch-Site: same-origin, or an Origin header whose host matches Host
+ * Sec-Fetch-Site: same-origin, or an Origin header whose host matches Host.
+ * This is a browser-side (CSRF) guard only: both headers are set freely by
+ * non-browser clients, so network reach is restricted by isLoopbackAddress.
  */
 export function isSameOrigin(headers: IncomingHttpHeaders): boolean {
   if (headers['sec-fetch-site'] === 'same-origin') return true
@@ -27,6 +29,18 @@ export function isSameOrigin(headers: IncomingHttpHeaders): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * True when a socket's remote address is the loopback interface: 127.0.0.0/8,
+ * ::1, or an IPv4-mapped loopback (::ffff:127.x.x.x). Unlike the request
+ * headers, the peer address cannot be chosen by the client.
+ */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (address === undefined) return false
+  if (address === '::1') return true
+  const v4 = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(v4)
 }
 
 /** Reads and parses a JSON request body, enforcing content-type and a byte cap */

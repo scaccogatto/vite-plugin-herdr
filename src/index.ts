@@ -35,6 +35,14 @@ export interface Options {
    * `screencapture`; override only to point at a test double.
    */
   screenshotCommand?: string
+  /**
+   * Accepts bridge requests from clients that are not on the loopback
+   * interface. Off by default: with `vite --host`, a tunnel or a container
+   * port mapping, anyone who reaches the dev server could otherwise send
+   * prompts to (and spawn) agents that run shell commands on this machine.
+   * Turn it on only on a network you trust.
+   */
+  allowRemote?: boolean
 }
 
 /** Resolved options with all defaults applied */
@@ -67,6 +75,7 @@ export function resolveOptions(options: Options): ResolvedOptions {
     appendTo: undefined,
     screenshot: 'auto',
     screenshotCommand: 'screencapture',
+    allowRemote: false,
     snippet: {
       maxDepth: 3,
       maxLines: 60,
@@ -130,6 +139,7 @@ export default function herdr(options: Options = {}): Plugin {
         inlineMaxChars: resolved.snippet.inlineMaxChars,
         screenshot: resolved.screenshot,
         screenshotCommand: resolved.screenshotCommand,
+        allowRemote: resolved.allowRemote,
       })
     },
 

@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import { describe, it, expect } from 'vitest'
-import { HttpError, isSameOrigin, readJson, sendJson, validatePrompt } from '../http.ts'
+import { HttpError, isLoopbackAddress, isSameOrigin, readJson, sendJson, validatePrompt } from '../http.ts'
 import type { ElementInfo, PromptRequest, ScreenshotRequest } from '../types.ts'
 
 function fixtureElement(overrides?: Partial<ElementInfo>): ElementInfo {
@@ -49,6 +49,23 @@ describe('isSameOrigin', () => {
   it('is false when origin and sec-fetch-site are both missing', () => {
     const headers: IncomingHttpHeaders = { host: 'localhost:5173' }
     expect(isSameOrigin(headers)).toBe(false)
+  })
+})
+
+describe('isLoopbackAddress', () => {
+  it.each(['127.0.0.1', '127.1.2.3', '::1', '::ffff:127.0.0.1'])('is true for %s', (address) => {
+    expect(isLoopbackAddress(address)).toBe(true)
+  })
+
+  it.each(['192.168.1.5', '10.0.0.1', '0.0.0.0', '::', '::ffff:192.168.1.5', 'fe80::1', '128.0.0.1', '127.0.0.1.evil', ''])(
+    'is false for %s',
+    (address) => {
+      expect(isLoopbackAddress(address)).toBe(false)
+    },
+  )
+
+  it('is false when the address is unknown (destroyed socket)', () => {
+    expect(isLoopbackAddress(undefined)).toBe(false)
   })
 })
 

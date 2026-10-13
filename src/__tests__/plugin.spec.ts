@@ -9,6 +9,7 @@ describe('resolveOptions', () => {
     expect(resolved.endpoint).toBe('/__herdr')
     expect(resolved.enabled).toBe(true)
     expect(resolved.socketPath).toBe(undefined)
+    expect(resolved.allowRemote).toBe(false)
     expect(resolved.snippet.maxDepth).toBe(3)
     expect(resolved.snippet.maxLines).toBe(60)
     expect(resolved.snippet.inlineMaxChars).toBe(1500)
