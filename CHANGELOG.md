@@ -4,11 +4,21 @@ All notable changes to this project are documented here. Conventional Commits; a
 
 ## [Unreleased]
 
-### Features
+### Added
 
-### Bug Fixes
+- `allowRemote` option (default `false`): accept bridge requests from clients that are not on the loopback interface, for a dev server reached over a trusted network.
 
-### Build / Tooling
+### Changed
+
+- **Breaking:** `engines.node` is now `>=22.12.0` (was `>=20`, end of life since April 2026, and below Vite 8's own floor), and the server build targets Node 22.12. CI runs the unit and integration suite on Node 22.12 with Vite 7 as well as on Node 24 with Vite 8.
+- Attachments and screenshots are written to `os.tmpdir()/vite-plugin-herdr-<uid>/` instead of `os.tmpdir()/vite-plugin-herdr/`. Files left in the old directory are no longer cleaned up by the plugin.
+- Unit coverage no longer counts `src/client/index.ts`, which the Playwright suites cover.
+
+### Security
+
+- **Breaking:** the `state`, `prompt` and `spawn` endpoints answer `403` to any client whose TCP peer address is not loopback, even when the dev server listens on the network (`vite --host`, a tunnel, a container port mapping). Before, a non-browser client could forge `Sec-Fetch-Site` or `Origin` and send prompts to (or spawn) agents. Set `allowRemote: true` to restore remote access on a trusted network.
+- The attachment directory is created with mode `0700`, a symlink or a directory owned by another user is refused, a pre-existing directory with group or other permissions is tightened, and attachment files are written with mode `0600`, so other local users can no longer read captured page markup or swap a file before the agent reads it.
+- Releases publish only from `v*` tags whose name matches `package.json`'s version, in the `npm` GitHub environment, after lint, typecheck, tests and build, with a pinned Node and its bundled npm instead of `npm@latest`.
 
 ## [0.2.0] - 2026-09-07
 
